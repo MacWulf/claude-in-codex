@@ -57,6 +57,7 @@ import { readStdinIfPiped } from "./lib/fs.mjs";
 import {
   collectReviewContext,
   ensureGitRepository,
+  getRepoRoot,
   resolveReviewTarget
 } from "./lib/git.mjs";
 import { binaryAvailable, getProcessIdentity } from "./lib/process.mjs";
@@ -895,6 +896,7 @@ async function executeTaskRun(request) {
   // Permission modes: dontAsk enforces allowedTools; bypassPermissions ignores them.
   const sandboxMode = request.write ? "workspace-write" : "read-only";
   const sandboxSettingsFile = createSandboxSettings(sandboxMode);
+  let mcpConfigFile = null;
 
   const claudeOptions = {
     model: request.model ?? undefined,
@@ -904,7 +906,7 @@ async function executeTaskRun(request) {
   };
 
   // workspace-write: all tools (no allowedTools = everything including MCP/Skill/Agent)
-  // read-only: strict whitelist — read + web only, no MCP/Skill/Agent
+  // read-only: strict whitelist — read + web + read-only git MCP, no Bash/Skill
   if (!request.write) {
     claudeOptions.allowedTools = SANDBOX_READ_ONLY_TOOLS;
   }
@@ -921,12 +923,18 @@ async function executeTaskRun(request) {
   const prompt = request.prompt || "Continue where you left off.";
   let result;
   try {
+    if (!request.write) {
+      mcpConfigFile = createReviewMcpConfig(getRepoRoot(workspaceRoot));
+      claudeOptions.mcpConfigFile = mcpConfigFile;
+      claudeOptions.strictMcpConfig = true;
+    }
     result = await runClaudeTurn(workspaceRoot, prompt, {
       ...claudeOptions,
       onProgress: request.onProgress,
       onSpawn: request.onSpawn,
     });
   } finally {
+    cleanupReviewMcpConfig(mcpConfigFile);
     cleanupSandboxSettings(sandboxSettingsFile);
   }
 

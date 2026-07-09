@@ -327,44 +327,6 @@ export function validateTurnCompletion(state, exitCode) {
 // OS-level sandboxing, so we restrict the tool whitelist instead.
 // ---------------------------------------------------------------------------
 
-export const SANDBOX_READ_ONLY_BASH_TOOLS = [
-  "Bash(git status:*)",
-  "Bash(git diff:*)",
-  "Bash(git log:*)",
-  "Bash(git show:*)",
-  "Bash(git blame:*)",
-  "Bash(git rev-parse:*)",
-  "Bash(git branch:*)",
-  "Bash(git ls-files:*)",
-  "Bash(git merge-base:*)",
-  "Bash(git describe:*)",
-  "Bash(git shortlog:*)",
-  "Bash(git cat-file:*)",
-  "Bash(git tag --list:*)",
-  "Bash(git stash list:*)",
-  "Bash(git config --get:*)",
-];
-
-export const SANDBOX_STOP_REVIEW_TOOLS = [
-  "Read",
-  "Glob",
-  "Grep",
-  "Bash(git log:*)",
-  "Bash(git diff:*)",
-  "Bash(git show:*)",
-];
-
-/** read-only: file reading + read-only git + web + read-only agents. No writes, MCP, or skills. */
-export const SANDBOX_READ_ONLY_TOOLS = [
-  "Read",
-  "Glob",
-  "Grep",
-  ...SANDBOX_READ_ONLY_BASH_TOOLS,
-  "WebSearch",
-  "WebFetch",
-  "Agent(explore,plan)",
-];
-
 /**
  * MCP server name used for the bundled read-only git MCP server. Exposes tools as
  * `mcp__<SERVER_NAME>__<toolName>` (see scripts/lib/mcp-git.mjs for the catalog).
@@ -384,6 +346,31 @@ export const REVIEW_MCP_TOOL_NAMES = [
 export const REVIEW_MCP_ALLOWED_TOOLS = REVIEW_MCP_TOOL_NAMES.map(
   (name) => `mcp__${REVIEW_MCP_SERVER_NAME}__${name}`
 );
+
+/**
+ * Tools exposed to stop-review gate runs. Bash is intentionally absent for the
+ * same reason as review runs: the Claude CLI does not strictly enforce
+ * `Bash(<pattern>:*)` sub-patterns, so any Bash entry would open the full Bash
+ * surface. Git operations are surfaced through the bundled read-only git MCP
+ * server instead (`REVIEW_MCP_ALLOWED_TOOLS`).
+ */
+export const SANDBOX_STOP_REVIEW_TOOLS = [
+  "Read",
+  "Glob",
+  "Grep",
+  ...REVIEW_MCP_ALLOWED_TOOLS,
+];
+
+/** read-only: file reading + read-only git MCP + web + read-only agents. No writes, Bash, or skills. */
+export const SANDBOX_READ_ONLY_TOOLS = [
+  "Read",
+  "Glob",
+  "Grep",
+  ...REVIEW_MCP_ALLOWED_TOOLS,
+  "WebSearch",
+  "WebFetch",
+  "Agent(explore,plan)",
+];
 
 /**
  * Tools exposed to review/adversarial-review runs. Bash is intentionally absent —

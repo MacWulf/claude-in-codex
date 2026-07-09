@@ -18,15 +18,31 @@ import {
   VALID_EFFORTS,
   DEFAULT_MODEL,
   DEFAULT_EFFORT_BY_MODEL,
-  SANDBOX_READ_ONLY_BASH_TOOLS,
   SANDBOX_READ_ONLY_TOOLS,
   SANDBOX_TEMP_DIR,
   SANDBOX_SETTINGS,
+  REVIEW_MCP_SERVER_NAME,
+  REVIEW_MCP_TOOL_NAMES,
+  REVIEW_MCP_ALLOWED_TOOLS,
   MAX_STREAM_PARSER_UNKNOWN_EVENTS,
   MAX_STREAM_PARSER_PARSE_ERRORS,
   MAX_STREAM_PARSER_TOOL_USES,
   MAX_STREAM_PARSER_TOUCHED_FILES,
 } from "../scripts/lib/claude-cli.mjs";
+
+function assertNoBashEntries(tools, label) {
+  for (const t of tools) {
+    assert.ok(!/^Bash(\(|$)/.test(t), `${label} must not contain Bash: ${t}`);
+  }
+}
+
+function assertIncludesReviewMcpTools(tools) {
+  for (const name of REVIEW_MCP_TOOL_NAMES) {
+    const expected = `mcp__${REVIEW_MCP_SERVER_NAME}__${name}`;
+    assert.ok(tools.includes(expected), `missing MCP tool entry: ${expected}`);
+    assert.ok(REVIEW_MCP_ALLOWED_TOOLS.includes(expected));
+  }
+}
 
 // ===========================================================================
 // StreamParser
@@ -675,7 +691,7 @@ describe("buildArgs", () => {
   });
 
   it("includes --allowedTools as separate flags per tool", () => {
-    const tools = ["Read", "Glob", "Bash(git diff:*)"];
+    const tools = ["Read", "Glob", "mcp__gitReview__diff"];
     const args = buildArgs("p", { allowedTools: tools });
     const toolArgs = [];
     for (let i = 0; i < args.length; i++) {
@@ -729,11 +745,9 @@ describe("SANDBOX_READ_ONLY_TOOLS", () => {
   it("contains Read", () => assert.ok(SANDBOX_READ_ONLY_TOOLS.includes("Read")));
   it("contains Glob", () => assert.ok(SANDBOX_READ_ONLY_TOOLS.includes("Glob")));
   it("contains Grep", () => assert.ok(SANDBOX_READ_ONLY_TOOLS.includes("Grep")));
-  it("contains explicit read-only git Bash patterns", () => {
-    for (const pattern of SANDBOX_READ_ONLY_BASH_TOOLS) {
-      assert.ok(SANDBOX_READ_ONLY_TOOLS.includes(pattern));
-    }
-    assert.ok(!SANDBOX_READ_ONLY_TOOLS.includes("Bash(git:*)"));
+  it("contains read-only git MCP tools and no Bash entries", () => {
+    assertIncludesReviewMcpTools(SANDBOX_READ_ONLY_TOOLS);
+    assertNoBashEntries(SANDBOX_READ_ONLY_TOOLS, "read-only allowlist");
   });
   it("contains WebSearch", () => assert.ok(SANDBOX_READ_ONLY_TOOLS.includes("WebSearch")));
   it("contains WebFetch", () => assert.ok(SANDBOX_READ_ONLY_TOOLS.includes("WebFetch")));

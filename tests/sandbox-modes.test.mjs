@@ -4,14 +4,16 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildArgs,
-  SANDBOX_READ_ONLY_BASH_TOOLS,
   SANDBOX_READ_ONLY_TOOLS,
+  SANDBOX_STOP_REVIEW_TOOLS,
   SANDBOX_REVIEW_TOOLS,
   SANDBOX_TEMP_DIR,
   SANDBOX_SETTINGS,
@@ -24,6 +26,10 @@ import {
   cleanupReviewMcpConfig,
 } from "../scripts/lib/claude-cli.mjs";
 import { resolvePluginRuntimeRoot } from "../scripts/lib/codex-paths.mjs";
+
+const COMPANION_SCRIPT = fileURLToPath(
+  new URL("../scripts/claude-companion.mjs", import.meta.url)
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +47,20 @@ function argsAllowedTools(args) {
     if (args[i] === "--allowedTools") tools.push(args[i + 1]);
   }
   return tools;
+}
+
+function assertNoBashEntries(tools, label) {
+  for (const t of tools) {
+    assert.ok(!/^Bash(\(|$)/.test(t), `${label} must not contain Bash: ${t}`);
+  }
+}
+
+function assertIncludesReviewMcpTools(tools) {
+  for (const name of REVIEW_MCP_TOOL_NAMES) {
+    const expected = `mcp__${REVIEW_MCP_SERVER_NAME}__${name}`;
+    assert.ok(tools.includes(expected), `missing MCP tool entry: ${expected}`);
+    assert.ok(REVIEW_MCP_ALLOWED_TOOLS.includes(expected));
+  }
 }
 
 function withTempCodexHome(run) {
@@ -63,6 +83,56 @@ function withTempCodexHome(run) {
     else process.env.CODEX_HOME = previousCodexHome;
     fs.rmSync(homeDir, { recursive: true, force: true });
   }
+}
+
+function runGitChecked(args, cwd) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function initGitRepo(workspaceDir) {
+  runGitChecked(["init"], workspaceDir);
+  runGitChecked(["config", "user.name", "Codex Test"], workspaceDir);
+  runGitChecked(["config", "user.email", "codex@example.com"], workspaceDir);
+  fs.writeFileSync(path.join(workspaceDir, "tracked.txt"), "base\n", "utf8");
+  runGitChecked(["add", "tracked.txt"], workspaceDir);
+  runGitChecked(["commit", "-m", "init"], workspaceDir);
+}
+
+function createFakeClaudeBinary(binDir) {
+  const claudePath = path.join(binDir, "claude");
+  const source = `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+
+if (process.env.CLAUDE_ARGS_FILE) {
+  fs.writeFileSync(process.env.CLAUDE_ARGS_FILE, JSON.stringify(args, null, 2) + "\\n", "utf8");
+}
+
+if (args[0] === "-p") {
+  process.stdout.write(JSON.stringify({
+    type: "result",
+    session_id: "task-session-result",
+    result: "task ok"
+  }) + "\\n");
+  process.exit(0);
+}
+
+if (args[0] === "--version") {
+  process.stdout.write("2.1.90 (Claude Code)\\n");
+  process.exit(0);
+}
+
+if (args[0] === "auth" && args[1] === "status") {
+  process.stdout.write("authenticated\\n");
+  process.exit(0);
+}
+
+process.stderr.write("unexpected args: " + JSON.stringify(args) + "\\n");
+process.exit(2);
+`;
+  fs.writeFileSync(claudePath, source, "utf8");
+  fs.chmodSync(claudePath, 0o755);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,28 +162,25 @@ describe("buildArgs read-only mode", () => {
     assert.equal(tools.length, SANDBOX_READ_ONLY_TOOLS.length);
   });
 
-  it("includes read-only Git Bash patterns instead of a wildcard git shell", () => {
+  it("includes read-only git MCP tools instead of Bash git patterns", () => {
     const tools = argsAllowedTools(args);
     assert.ok(tools.includes("Read"));
     assert.ok(tools.includes("Glob"));
     assert.ok(tools.includes("Grep"));
-    for (const pattern of SANDBOX_READ_ONLY_BASH_TOOLS) {
-      assert.ok(tools.includes(pattern), `missing ${pattern}`);
-    }
-    assert.ok(!tools.includes("Bash(git:*)"));
+    assertNoBashEntries(tools, "read-only allowlist");
+    assertIncludesReviewMcpTools(tools);
     assert.ok(tools.includes("WebSearch"));
     assert.ok(tools.includes("WebFetch"));
     assert.ok(tools.includes("Agent(explore,plan)"));
   });
 
-  it("does NOT include Write, Edit, Bash (unrestricted), Agent (unrestricted), Skill, MCP", () => {
+  it("does NOT include Write, Edit, Bash (unrestricted), Agent (unrestricted), or Skill", () => {
     const tools = argsAllowedTools(args);
     assert.ok(!tools.includes("Write"));
     assert.ok(!tools.includes("Edit"));
     assert.ok(!tools.includes("Bash"));
     assert.ok(!tools.includes("Agent"));
     assert.ok(!tools.includes("Skill"));
-    assert.ok(!tools.some((t) => t.startsWith("mcp__")));
   });
 
   it("includes stream-json format flags", () => {
@@ -246,10 +313,12 @@ describe("sandbox settings content", () => {
 // ---------------------------------------------------------------------------
 
 describe("mode consistency", () => {
-  it("SANDBOX_READ_ONLY_TOOLS includes the explicit read-only git Bash subset", () => {
-    for (const pattern of SANDBOX_READ_ONLY_BASH_TOOLS) {
-      assert.ok(SANDBOX_READ_ONLY_TOOLS.includes(pattern));
-    }
+  it("SANDBOX_READ_ONLY_TOOLS includes the read-only git MCP surface", () => {
+    assertIncludesReviewMcpTools(SANDBOX_READ_ONLY_TOOLS);
+  });
+
+  it("SANDBOX_STOP_REVIEW_TOOLS includes the read-only git MCP surface", () => {
+    assertIncludesReviewMcpTools(SANDBOX_STOP_REVIEW_TOOLS);
   });
 
   it("read-only tools are read-only (no Write, Edit, Bash full)", () => {
@@ -260,6 +329,8 @@ describe("mode consistency", () => {
         `${t} should not be in read-only tools`
       );
     }
+    assertNoBashEntries(SANDBOX_READ_ONLY_TOOLS, "read-only allowlist");
+    assertNoBashEntries(SANDBOX_STOP_REVIEW_TOOLS, "stop-review allowlist");
   });
 
   it("workspace-write mode uses no allowedTools (verified via buildArgs)", () => {
@@ -280,12 +351,7 @@ describe("SANDBOX_REVIEW_TOOLS", () => {
   });
 
   it("does NOT include any Bash entry (Bash patterns are not strictly enforced)", () => {
-    for (const t of SANDBOX_REVIEW_TOOLS) {
-      assert.ok(
-        !/^Bash(\(|$)/.test(t),
-        `review allowlist must not contain Bash: ${t}`
-      );
-    }
+    assertNoBashEntries(SANDBOX_REVIEW_TOOLS, "review allowlist");
   });
 
   it("does NOT include Write/Edit/MultiEdit/NotebookEdit/Task", () => {
@@ -295,14 +361,7 @@ describe("SANDBOX_REVIEW_TOOLS", () => {
   });
 
   it("exposes the bundled git MCP tools as mcp__<server>__<tool> entries", () => {
-    for (const name of REVIEW_MCP_TOOL_NAMES) {
-      const expected = `mcp__${REVIEW_MCP_SERVER_NAME}__${name}`;
-      assert.ok(
-        SANDBOX_REVIEW_TOOLS.includes(expected),
-        `missing MCP tool entry: ${expected}`
-      );
-      assert.ok(REVIEW_MCP_ALLOWED_TOOLS.includes(expected));
-    }
+    assertIncludesReviewMcpTools(SANDBOX_REVIEW_TOOLS);
   });
 
   it("REVIEW_MCP_TOOL_NAMES covers diff, log, show, blame, status, grep, ls_files", () => {
@@ -364,5 +423,62 @@ describe("buildArgs review mode", () => {
     const args = buildArgs("p", { allowedTools: SANDBOX_REVIEW_TOOLS });
     const allowed = argsAllowedTools(args);
     assert.deepEqual([...allowed].sort(), [...SANDBOX_REVIEW_TOOLS].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. Read-only task path — MCP config wired into the real Claude invocation
+// ---------------------------------------------------------------------------
+
+describe("read-only task MCP wiring", () => {
+  it("passes --mcp-config and --strict-mcp-config with the read-only tool allowlist", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-task-mcp-test-"));
+    const homeDir = path.join(rootDir, "home");
+    const binDir = path.join(rootDir, "bin");
+    const workspaceDir = path.join(rootDir, "workspace");
+    const argsFile = path.join(rootDir, "claude-args.json");
+
+    try {
+      fs.mkdirSync(homeDir, { recursive: true });
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.mkdirSync(workspaceDir, { recursive: true });
+      fs.mkdirSync(path.join(homeDir, ".codex"), { recursive: true });
+      createFakeClaudeBinary(binDir);
+      initGitRepo(workspaceDir);
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          COMPANION_SCRIPT,
+          "task",
+          "--cwd",
+          workspaceDir,
+          "--json",
+          "--quiet-progress",
+          "inspect the repository",
+        ],
+        {
+          cwd: workspaceDir,
+          env: {
+            ...process.env,
+            HOME: homeDir,
+            USERPROFILE: homeDir,
+            CODEX_HOME: path.join(homeDir, ".codex"),
+            PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
+            CLAUDE_ARGS_FILE: argsFile,
+          },
+          encoding: "utf8",
+        }
+      );
+
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const claudeArgs = JSON.parse(fs.readFileSync(argsFile, "utf8"));
+      assert.ok(argsHas(claudeArgs, "--mcp-config"));
+      assert.ok(claudeArgs.includes("--strict-mcp-config"));
+      assert.deepEqual(argsAllowedTools(claudeArgs), SANDBOX_READ_ONLY_TOOLS);
+      assertNoBashEntries(argsAllowedTools(claudeArgs), "task read-only allowlist");
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
   });
 });

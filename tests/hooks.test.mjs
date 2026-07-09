@@ -296,6 +296,8 @@ describe("hooks", () => {
       assert.ok(permissionModeIndex >= 0);
       assert.equal(claudeArgs[permissionModeIndex + 1], "dontAsk");
       assert.ok(claudeArgs.includes("--settings"));
+      assert.ok(claudeArgs.includes("--mcp-config"));
+      assert.ok(claudeArgs.includes("--strict-mcp-config"));
 
       const allowedTools = [];
       for (let i = 0; i < claudeArgs.length; i++) {
@@ -304,6 +306,8 @@ describe("hooks", () => {
         }
       }
       assert.deepEqual(allowedTools, SANDBOX_STOP_REVIEW_TOOLS);
+      assert.ok(!allowedTools.some((tool) => /^Bash(\(|$)/.test(tool)));
+      assert.ok(allowedTools.some((tool) => tool.startsWith("mcp__gitReview__")));
     } finally {
       cleanupHookEnvironment(testEnv);
     }

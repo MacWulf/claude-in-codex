@@ -36,4 +36,8 @@ Do not block based on older edits from earlier turns when the immediately previo
 
 <dig_deeper_nudge>
 If the previous turn did make code changes, check for second-order failures, empty-state behavior, retries, stale state, rollback risk, and design tradeoffs before you finalize.
+When you need git context, use the read-only MCP git tools:
+`mcp__gitReview__diff`, `mcp__gitReview__log`, `mcp__gitReview__show`,
+`mcp__gitReview__status`, `mcp__gitReview__grep`, `mcp__gitReview__blame`,
+and `mcp__gitReview__ls_files`. Do not use Bash git commands.
 </dig_deeper_nudge>
