@@ -143,4 +143,21 @@ describe("loadPromptTemplate", () => {
     assert.match(content, /<user_focus>/);
     assert.match(content, /<repository_context>/);
   });
+
+  it("keeps review prompt aligned to the structured review contract", () => {
+    const content = loadPromptTemplate(PROJECT_ROOT, "review");
+    assert.match(content, /SPDX-License-Identifier: Apache-2\.0/);
+    assert.match(content, /\{\{REVIEW_KIND\}\}/);
+    assert.match(content, /\{\{TARGET_LABEL\}\}/);
+    assert.match(content, /\{\{USER_FOCUS\}\}/);
+    assert.match(content, /\{\{REVIEW_INPUT\}\}/);
+    assert.match(content, /correctness and quality review/i);
+    assert.match(content, /fair but rigorous/i);
+    assert.match(content, /<severity_taxonomy>/);
+    assert.match(content, /<structured_output_contract>/);
+    assert.match(content, /"verdict": "approve" \| "needs-attention"/);
+    assert.match(content, /untrusted user input/i);
+    assert.match(content, /untrusted repository data/i);
+    assert.match(content, /<repository_context>/);
+  });
 });

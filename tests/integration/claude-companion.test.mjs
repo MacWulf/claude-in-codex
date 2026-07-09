@@ -82,12 +82,50 @@ async function main() {
   const emitUnknownNoTerminal = /\\bunknown-no-terminal\\b/.test(prompt);
   const resultText = \`completed:\${prompt}\`;
   const structuredResult = jsonSchema
-    ? {
-        verdict: "approve",
-        summary: "Structured output path works.",
-        findings: [],
-        next_steps: [],
-      }
+    ? /\\bseverity-sort-fixture\\b/.test(prompt)
+      ? {
+          verdict: "needs-attention",
+          summary: "Structured output path sorts findings.",
+          findings: [
+            {
+              severity: "low",
+              title: "Low issue",
+              body: "Low impact issue.",
+              file: "notes.md",
+              line_start: 1,
+              line_end: 1,
+              confidence: 0.8,
+              recommendation: "Fix the low issue.",
+            },
+            {
+              severity: "critical",
+              title: "Critical issue",
+              body: "Critical impact issue.",
+              file: "notes.md",
+              line_start: 2,
+              line_end: 2,
+              confidence: 0.9,
+              recommendation: "Fix the critical issue.",
+            },
+            {
+              severity: "high",
+              title: "High issue",
+              body: "High impact issue.",
+              file: "notes.md",
+              line_start: 3,
+              line_end: 3,
+              confidence: 0.85,
+              recommendation: "Fix the high issue.",
+            },
+          ],
+          next_steps: ["Fix findings in severity order."],
+        }
+      : {
+          verdict: "approve",
+          summary: "Structured output path works.",
+          findings: [],
+          next_steps: [],
+        }
     : null;
 
   process.stdout.write(
@@ -891,8 +929,12 @@ describe("claude-companion integration", () => {
         reviewInvocation.args[reviewInvocation.args.indexOf("--model") + 1],
         "claude-haiku-4-5"
       );
+      assert.ok(reviewInvocation.args.includes("--json-schema"));
       assert.match(reviewInvocation.prompt, /working tree diff/i);
+      assert.match(reviewInvocation.prompt, /correctness and quality review/i);
+      assert.match(reviewInvocation.prompt, /<structured_output_contract>/);
       assert.match(reviewResult.stdout, /Claude Code Review/);
+      assert.match(reviewResult.stdout, /Verdict: approve/);
 
       const branchInvocationFile = path.join(testEnv.rootDir, "branch-review-invocation.json");
       runCompanion(
@@ -915,6 +957,40 @@ describe("claude-companion integration", () => {
         fs.readFileSync(branchInvocationFile, "utf8")
       );
       assert.match(branchInvocation.prompt, /branch diff against main/i);
+      assert.ok(branchInvocation.args.includes("--json-schema"));
+    } finally {
+      cleanupTestEnvironment(testEnv);
+    }
+  });
+
+  it("renders standard review structured findings in severity order", () => {
+    const testEnv = createTestEnvironment();
+
+    try {
+      setupGitWorkspace(testEnv.workspaceDir);
+      fs.writeFileSync(
+        path.join(testEnv.workspaceDir, "notes.md"),
+        "severity-sort-fixture\n",
+        "utf8"
+      );
+
+      const result = runCompanion(
+        [
+          "review",
+          "--cwd",
+          testEnv.workspaceDir,
+          "--scope",
+          "working-tree",
+        ],
+        { env: testEnv.env }
+      );
+
+      const criticalIdx = result.stdout.indexOf("[critical] Critical issue");
+      const highIdx = result.stdout.indexOf("[high] High issue");
+      const lowIdx = result.stdout.indexOf("[low] Low issue");
+      assert.ok(criticalIdx >= 0, result.stdout);
+      assert.ok(highIdx > criticalIdx, result.stdout);
+      assert.ok(lowIdx > highIdx, result.stdout);
     } finally {
       cleanupTestEnvironment(testEnv);
     }
