@@ -75,13 +75,15 @@ See the [CHANGELOG](CHANGELOG.md) for the full `v1.3.0` notes.
 > npm install -g @anthropic-ai/claude-code && claude auth login
 > ```
 
-**One-liner (POSIX):**
+This repo *is* its own Codex marketplace — add it and install the `cc` plugin straight from it. No
+third-party marketplace involved:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/MacWulf/claude-in-codex/main/scripts/install.sh" | bash
+codex plugin marketplace add MacWulf/claude-in-codex
+codex plugin add cc@claude-in-codex
 ```
 
-**Or clone and add it as a local Codex marketplace:**
+Prefer a local checkout? Point Codex at the cloned directory instead:
 
 ```bash
 git clone https://github.com/MacWulf/claude-in-codex.git
