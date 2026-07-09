@@ -1,4 +1,8 @@
-Copyright 2026 Sendbird, Inc.
+claude-in-codex
+Copyright 2026 MacWulf
+
+This project is a fork of sendbird/cc-plugin-codex.
+Original work copyright 2026 Sendbird, Inc.
 
 This project includes material adapted from OpenAI's codex-plugin-cc.
 Original work copyright 2026 OpenAI.
