@@ -8,7 +8,7 @@ import readline from "node:readline";
 import process from "node:process";
 
 const CLIENT_INFO = {
-  name: "cc-plugin-codex-installer",
+  name: "claude-in-codex",
   version: "1.0.0",
 };
 const DEFAULT_TIMEOUT_MS = 15000;

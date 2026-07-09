@@ -15,7 +15,7 @@ const PROJECT_ROOT = path.resolve(
   fileURLToPath(new URL("../../", import.meta.url))
 );
 const COMPANION_SCRIPT = path.join(PROJECT_ROOT, "scripts", "claude-companion.mjs");
-const INSTALLER_SCRIPT = path.join(PROJECT_ROOT, "scripts", "installer-cli.mjs");
+const LOCAL_MARKETPLACE_NAME = "claude-in-codex";
 const RESCUE_SKILL_PATH = path.join(PROJECT_ROOT, "skills", "rescue", "SKILL.md");
 const REVIEW_SKILL_PATH = path.join(PROJECT_ROOT, "skills", "review", "SKILL.md");
 const ADVERSARIAL_REVIEW_SKILL_PATH = path.join(
@@ -208,8 +208,8 @@ function createLocalMarketplaceFixture(testEnv) {
     path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"),
     `${JSON.stringify(
       {
-        name: "sendbird",
-        interface: { displayName: "Sendbird Plugins" },
+        name: LOCAL_MARKETPLACE_NAME,
+        interface: { displayName: "claude-in-codex" },
         plugins: [
           {
             name: "cc",
@@ -235,19 +235,32 @@ function createLocalMarketplaceFixture(testEnv) {
 
 function installPlugin(testEnv) {
   const marketplaceRoot = createLocalMarketplaceFixture(testEnv);
-  const result = spawnSync(process.execPath, [INSTALLER_SCRIPT, "install"], {
-    cwd: PROJECT_ROOT,
-    env: {
-      ...testEnv.env,
-      CC_PLUGIN_CODEX_MARKETPLACE_SOURCE: marketplaceRoot,
-      CC_PLUGIN_CODEX_MARKETPLACE_NAME: "sendbird",
-    },
-    encoding: "utf8",
-  });
 
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const addMarketplace = spawnSync(
+    "codex",
+    ["plugin", "marketplace", "add", marketplaceRoot],
+    { cwd: PROJECT_ROOT, env: testEnv.env, encoding: "utf8" }
+  );
+  assert.equal(
+    addMarketplace.status,
+    0,
+    addMarketplace.stderr || addMarketplace.stdout
+  );
 
-  const cacheParent = path.join(testEnv.codexHome, "plugins", "cache", "sendbird", "cc");
+  const addPlugin = spawnSync(
+    "codex",
+    ["plugin", "add", `cc@${LOCAL_MARKETPLACE_NAME}`],
+    { cwd: PROJECT_ROOT, env: testEnv.env, encoding: "utf8" }
+  );
+  assert.equal(addPlugin.status, 0, addPlugin.stderr || addPlugin.stdout);
+
+  const cacheParent = path.join(
+    testEnv.codexHome,
+    "plugins",
+    "cache",
+    LOCAL_MARKETPLACE_NAME,
+    "cc"
+  );
   const configFile = path.join(testEnv.codexHome, "config.toml");
   const cacheDir = fs.existsSync(cacheParent)
     ? fs
@@ -255,30 +268,16 @@ function installPlugin(testEnv) {
         .filter((entry) => entry.isDirectory())
         .map((entry) => path.join(cacheParent, entry.name))
         .find((candidate) =>
-          fs.existsSync(path.join(candidate, "scripts", "installer-cli.mjs"))
+          fs.existsSync(path.join(candidate, "scripts", "claude-companion.mjs"))
         )
     : null;
 
   assert.ok(
     cacheDir,
-    "installer should install the plugin into the Codex cache"
+    "codex should install the plugin into its plugin cache"
   );
-  assert.ok(fs.existsSync(configFile), "installer should create a Codex config.toml");
+  assert.ok(fs.existsSync(configFile), "codex should create a config.toml");
   return cacheDir;
-}
-
-function installPluginWithEnv(testEnv, extraEnv = {}) {
-  const result = spawnSync(process.execPath, [INSTALLER_SCRIPT, "install"], {
-    cwd: PROJECT_ROOT,
-    env: {
-      ...testEnv.env,
-      ...extraEnv,
-    },
-    encoding: "utf8",
-  });
-
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  return result;
 }
 
 function createMethodNotFoundCodex(testEnv) {
