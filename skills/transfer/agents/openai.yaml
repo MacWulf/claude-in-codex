@@ -1,0 +1,6 @@
+# Copyright 2026 Sendbird, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+interface:
+  display_name: "Claude Code Transfer"
+  short_description: "Args: --wait, --background, --model <model>, --effort <low|medium|high|max>, --source <path>, --prompt-file <path>. Start a fresh Claude Code session from the current Codex thread transcript."

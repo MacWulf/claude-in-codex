@@ -789,6 +789,13 @@ export async function runClaudeTurn(cwd, prompt, options = {}) {
   });
 }
 
+export async function startClaudeSessionFromPrompt(cwd, prompt, options = {}) {
+  return runClaudeTurn(cwd, prompt, {
+    ...options,
+    resumeSessionId: undefined,
+  });
+}
+
 /**
  * Execute a review (non-streaming, no session persistence).
  *

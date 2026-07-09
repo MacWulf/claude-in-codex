@@ -183,3 +183,19 @@ export async function callCodexAppServer({ cwd, method, params }) {
     });
   });
 }
+
+export async function readCodexThread(cwd, threadId) {
+  return callCodexAppServer({
+    cwd,
+    method: "thread/read",
+    params: { threadId },
+  });
+}
+
+export async function listCodexThreadItems(cwd, threadId) {
+  return callCodexAppServer({
+    cwd,
+    method: "thread/items/list",
+    params: { threadId },
+  });
+}

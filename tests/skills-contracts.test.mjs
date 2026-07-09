@@ -318,6 +318,25 @@ test("rescue parent skill owns resume-candidate exploration", () => {
   assert.match(runtimeSkill, /The parent rescue skill already owns that choice/i);
 });
 
+test("transfer skill documents app-server transcript handoff and fallback files", () => {
+  const transfer = read("skills/transfer/SKILL.md");
+  const transferAgentMeta = read("skills/transfer/agents/openai.yaml");
+  const activeRootPattern = /<plugin-root>\/scripts\/claude-companion\.mjs/i;
+
+  assert.match(transfer, /Resolve `<plugin-root>` as two directories above this `SKILL\.md` file/i);
+  assert.match(transfer, activeRootPattern);
+  assert.match(transfer, /claude-companion\.mjs" transfer/i);
+  assert.match(transfer, /`--background` and `--wait` as Codex-side execution controls only/i);
+  assert.match(transfer, /Never forward either flag to `claude-companion\.mjs transfer`/i);
+  assert.match(transfer, /`CODEX_THREAD_ID`/i);
+  assert.match(transfer, /`thread\/read` and `thread\/items\/list`/i);
+  assert.match(transfer, /`--source <path>` or `--prompt-file <path>`/i);
+  assert.match(transfer, /explicit untrusted-input delimiters/i);
+  assert.match(transfer, /claude --resume <session_id>/i);
+  assert.match(transferAgentMeta, /Claude Code Transfer/i);
+  assert.match(transferAgentMeta, /--source <path>, --prompt-file <path>/i);
+});
+
 test("setup skill repairs native plugin hook feature gates before the final setup report", () => {
   const setup = read("skills/setup/SKILL.md");
 

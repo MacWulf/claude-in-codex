@@ -19,7 +19,7 @@
  *
  * Subcommands:
  *   setup, review, adversarial-review, task, task-worker,
- *   status, result, cancel, task-resume-candidate
+ *   transfer, status, result, cancel, task-resume-candidate
  */
 
 import { spawn } from "node:child_process";
@@ -34,6 +34,7 @@ import {
   getClaudeAvailability,
   getClaudeAuthStatus,
   runClaudeTurn,
+  startClaudeSessionFromPrompt,
   runClaudeReview,
   runClaudeAdversarialReview,
   cancelClaudeProcess,
@@ -61,7 +62,11 @@ import {
   resolveReviewTarget
 } from "./lib/git.mjs";
 import { binaryAvailable, getProcessIdentity } from "./lib/process.mjs";
-import { callCodexAppServer } from "./lib/codex-app-server.mjs";
+import {
+  callCodexAppServer,
+  listCodexThreadItems,
+  readCodexThread,
+} from "./lib/codex-app-server.mjs";
 import {
   ensureNativePluginHooksEnabled,
   nativePluginHooksStatus,
@@ -111,7 +116,8 @@ import {
   renderJobStatusReport,
   renderSetupReport,
   renderStatusReport,
-  renderTaskResult
+  renderTaskResult,
+  renderTransferBootstrapPrompt
 } from "./lib/render.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -133,6 +139,7 @@ function printUsage() {
       "  node scripts/claude-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <model|opus|sonnet|haiku>] [--effort <low|medium|high|xhigh|max>]",
       "  node scripts/claude-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <model|opus|sonnet|haiku>] [--effort <low|medium|high|xhigh|max>] [focus text]",
       "  node scripts/claude-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|opus|sonnet|haiku>] [--effort <low|medium|high|xhigh|max>] [prompt]",
+      "  node scripts/claude-companion.mjs transfer [--source <file>|--prompt-file <file>] [--model <model|opus|sonnet|haiku>] [--effort <low|medium|high|xhigh|max>]",
       "  node scripts/claude-companion.mjs status [job-id] [--all] [--json]",
       "  node scripts/claude-companion.mjs result [job-id] [--json]",
       "  node scripts/claude-companion.mjs cancel [job-id] [--json]",
@@ -1000,6 +1007,9 @@ function getJobKindLabel(kind, jobClass) {
   if (kind === "adversarial-review") {
     return "adversarial-review";
   }
+  if (kind === "transfer") {
+    return "transfer";
+  }
   return jobClass === "review" ? "review" : "rescue";
 }
 
@@ -1184,6 +1194,188 @@ function buildTaskRequest({
     resumeSessionId,
     jobId,
     markViewedOnSuccess
+  };
+}
+
+function extractArrayPayload(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (Array.isArray(value?.items)) {
+    return value.items;
+  }
+  if (Array.isArray(value?.data)) {
+    return value.data;
+  }
+  if (Array.isArray(value?.messages)) {
+    return value.messages;
+  }
+  if (Array.isArray(value?.turns)) {
+    return value.turns;
+  }
+  return [];
+}
+
+function extractTextPayload(value) {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(extractTextPayload).filter(Boolean).join("\n");
+  }
+  if (typeof value !== "object") {
+    return String(value);
+  }
+  for (const key of ["text", "content", "message", "body", "input", "output"]) {
+    const text = extractTextPayload(value[key]);
+    if (text) {
+      return text;
+    }
+  }
+  if (Array.isArray(value.parts)) {
+    return value.parts.map(extractTextPayload).filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+function renderTranscriptItem(item, index) {
+  const role =
+    item?.role ??
+    item?.author?.role ??
+    item?.author ??
+    item?.type ??
+    `item-${index + 1}`;
+  const text = extractTextPayload(item);
+  if (!text.trim()) {
+    return "";
+  }
+  return [
+    `--- turn ${index + 1}: ${String(role).trim() || "unknown"} ---`,
+    text.trimEnd(),
+  ].join("\n");
+}
+
+function renderTranscriptFromHistory(threadPayload, itemsPayload) {
+  const items = [
+    ...extractArrayPayload(threadPayload),
+    ...extractArrayPayload(itemsPayload),
+  ];
+  const seen = new Set();
+  const renderedItems = [];
+  for (const [index, item] of items.entries()) {
+    const rendered = renderTranscriptItem(item, index);
+    if (!rendered || seen.has(rendered)) {
+      continue;
+    }
+    seen.add(rendered);
+    renderedItems.push(rendered);
+  }
+  if (renderedItems.length > 0) {
+    return renderedItems.join("\n\n");
+  }
+  const directText = extractTextPayload(threadPayload) || extractTextPayload(itemsPayload);
+  return directText.trim();
+}
+
+async function readTransferTranscriptFromAppServer(cwd, threadId) {
+  const threadPayload = await readCodexThread(cwd, threadId);
+  const itemsPayload = await listCodexThreadItems(cwd, threadId);
+  const transcript = renderTranscriptFromHistory(threadPayload, itemsPayload);
+  if (!transcript) {
+    throw new Error(
+      "Codex app-server did not return usable transcript items. Re-run transfer with --source <file> or --prompt-file <file>."
+    );
+  }
+  return {
+    transcript,
+    source: "app-server",
+    threadPayload,
+    itemsPayload,
+  };
+}
+
+function readTransferTranscriptFromFile(cwd, options) {
+  const sourceFile = options.source ?? options["prompt-file"] ?? null;
+  if (!sourceFile) {
+    return null;
+  }
+  const filePath = path.resolve(cwd, sourceFile);
+  return {
+    transcript: fs.readFileSync(filePath, "utf8"),
+    source: filePath,
+    threadPayload: null,
+    itemsPayload: null,
+  };
+}
+
+function buildTransferJob(workspaceRoot, ownerSessionId = null) {
+  return createCompanionJob({
+    prefix: "transfer",
+    kind: "transfer",
+    title: "Claude Code Transfer",
+    workspaceRoot,
+    jobClass: "transfer",
+    summary: "Transfer current Codex thread to Claude Code",
+    write: false,
+    sessionId: ownerSessionId,
+  });
+}
+
+async function executeTransferRun(request) {
+  ensureClaudeReady(request.cwd);
+  const workspaceRoot = resolveWorkspaceRoot(request.cwd);
+  const routing = buildSessionRoutingContext(request.cwd);
+  const fileTranscript = readTransferTranscriptFromFile(request.cwd, request.options);
+  const threadId = fileTranscript ? request.threadId ?? null : request.threadId;
+  if (!fileTranscript && !threadId) {
+    throw new Error(
+      "Unable to resolve the current Codex thread id. Re-run inside a Codex thread with CODEX_THREAD_ID available, or pass --source <file> / --prompt-file <file>."
+    );
+  }
+
+  const transcriptResult =
+    fileTranscript ?? (await readTransferTranscriptFromAppServer(request.cwd, threadId));
+  const prompt = renderTransferBootstrapPrompt({
+    workspaceRoot,
+    threadId,
+    ownerSessionId: routing.ownerSessionId,
+    transcript: transcriptResult.transcript,
+  });
+
+  const result = await startClaudeSessionFromPrompt(workspaceRoot, prompt, {
+    model: request.model ?? undefined,
+    effort: request.effort ?? undefined,
+    onProgress: request.onProgress,
+    onSpawn: request.onSpawn,
+  });
+  const sessionId = result.sessionId;
+  if (!sessionId) {
+    throw new Error("Claude Code did not report a session_id for the transferred session.");
+  }
+  const resumeCommand = `claude --resume ${sessionId}`;
+  const payload = {
+    status: result.status,
+    warning: result.warning ?? null,
+    sessionId,
+    sourceThreadId: threadId,
+    transcriptSource: transcriptResult.source,
+    resumeCommand,
+    bootstrapPrompt: prompt,
+  };
+
+  return {
+    exitStatus: resolveClaudeExitStatus(result),
+    threadId: sessionId,
+    turnId: null,
+    payload,
+    rendered: `${resumeCommand}\n`,
+    summary: `Transferred Codex thread to Claude Code session ${sessionId}.`,
+    jobTitle: "Claude Code Transfer",
+    jobClass: "transfer",
+    write: false,
   };
 }
 
@@ -1662,6 +1854,47 @@ async function handleTask(argv) {
   });
 }
 
+async function handleTransfer(argv) {
+  const { options } = parseCommandInput(argv, {
+    valueOptions: ["model", "effort", "cwd", "source", "prompt-file"],
+    booleanOptions: ["json", "quiet-progress"],
+    aliasMap: {
+      m: "model"
+    }
+  });
+
+  const cwd = resolveCommandCwd(options);
+  const workspaceRoot = resolveCommandWorkspace(options);
+  const routing = buildSessionRoutingContext(cwd);
+  const requestedModel = normalizeRequestedModel(options.model);
+  const model = resolveDefaultModel(requestedModel);
+  const resolvedEffort = resolveDefaultEffort(model, options.effort);
+  const effort = resolvedEffort ? resolveEffort(resolvedEffort) : null;
+  const ownerSessionId = routing.ownerSessionId;
+
+  alignCurrentSessionToOwner(workspaceRoot, ownerSessionId);
+  const job = buildTransferJob(workspaceRoot, ownerSessionId);
+
+  await runForegroundCommand(
+    job,
+    (progress, onSpawn) =>
+      executeTransferRun({
+        cwd,
+        model,
+        effort,
+        threadId: routing.parentThreadId,
+        options,
+        onSpawn,
+        onProgress: progress,
+      }),
+    {
+      json: options.json,
+      markViewedOnSuccess: true,
+      quietProgress: Boolean(options["quiet-progress"])
+    }
+  );
+}
+
 async function handleTaskWorker(argv) {
   const { options } = parseCommandInput(argv, {
     valueOptions: ["cwd", "job-id"]
@@ -2052,6 +2285,9 @@ async function main() {
       break;
     case "task":
       await handleTask(argv);
+      break;
+    case "transfer":
+      await handleTransfer(argv);
       break;
     case "task-worker":
       await handleTaskWorker(argv);

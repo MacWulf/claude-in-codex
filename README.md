@@ -28,7 +28,7 @@
 `cc-plugin-codex` turns Codex into a host for Claude Code work.
 **Codex stays in charge of the thread. Claude Code does the review and rescue work.**
 
-You get seven commands (`$cc:review`, `$cc:adversarial-review`, `$cc:rescue`, `$cc:status`, `$cc:result`, `$cc:cancel`, `$cc:setup`) that launch tracked Claude Code work, manage lifecycle and ownership, and surface results back into Codex.
+You get eight commands (`$cc:review`, `$cc:adversarial-review`, `$cc:rescue`, `$cc:transfer`, `$cc:status`, `$cc:result`, `$cc:cancel`, `$cc:setup`) that launch tracked Claude Code work, manage lifecycle and ownership, and surface results back into Codex.
 
 That includes:
 - Built-in Codex subagent orchestration for rescue and background review flows
@@ -100,6 +100,7 @@ When it finishes, Codex should nudge you toward the right result. If not, `$cc:s
 | `$cc:review` | Read-only Claude Code review of your changes |
 | `$cc:adversarial-review` | Design-challenging review — questions approach, tradeoffs, hidden assumptions |
 | `$cc:rescue` | Hand a task to Claude Code — bugs, fixes, investigations, follow-ups |
+| `$cc:transfer` | Start a fresh Claude Code session from the current Codex thread transcript |
 | `$cc:status` | List running and recent Claude Code jobs, or inspect one job |
 | `$cc:result` | Open the output of a finished job |
 | `$cc:cancel` | Cancel an active background job |
@@ -109,6 +110,7 @@ Quick routing rule:
 - Use `$cc:review` for straightforward correctness review of the current diff.
 - Use `$cc:adversarial-review` for riskier config/template/migration/design changes, or whenever you want stronger challenge on assumptions and tradeoffs.
 - Use `$cc:rescue` when you want Claude Code to investigate, validate by changing code, or actually fix/implement something.
+- Use `$cc:transfer` when you want to pick up the current Codex thread in a fresh Claude Code session.
 
 ### `$cc:review`
 
@@ -176,6 +178,26 @@ $cc:rescue --model sonnet --effort medium investigate the flaky test
 **Resume behavior:** If you don't pass `--resume` or `--fresh`, rescue checks for a resumable Claude session and asks once whether to continue or start fresh. Your phrasing guides the recommendation — "continue the last run" → resume, "start over" → fresh.
 
 Background rescue runs through a built-in Codex subagent. When the child finishes, the plugin tries to nudge the parent thread with the exact `$cc:result <job-id>` to open.
+
+### `$cc:transfer`
+
+Start a fresh Claude Code session from the current Codex thread transcript. On success, it prints the exact command to resume that new Claude session:
+
+```text
+$cc:transfer
+claude --resume <session-id>
+```
+
+**Flags:** `--wait`, `--background`, `--model <model>`, `--effort <low|medium|high|xhigh|max>`, `--source <path>`, `--prompt-file <path>`
+
+Transfer resolves the current Codex thread id from the plugin's session routing context (`CODEX_THREAD_ID`) and reads history through Codex app-server `thread/read` plus `thread/items/list`. The transcript is wrapped as untrusted context before it is sent to Claude Code.
+
+If the app-server history payload is unavailable or does not include usable transcript items, supply a transcript file directly:
+
+```text
+$cc:transfer --source /path/to/transcript.txt
+$cc:transfer --prompt-file /path/to/transcript.txt
+```
 
 ### `$cc:status`
 

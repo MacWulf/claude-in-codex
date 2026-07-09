@@ -164,7 +164,7 @@ function createTestEnvironment() {
   };
 }
 
-function createFakeCodexAppServer(testEnv, hooks) {
+function createFakeCodexAppServer(testEnv, hooks, options = {}) {
   const serverPath = path.join(testEnv.rootDir, "fake-codex-app-server.mjs");
   const logPath = path.join(testEnv.rootDir, "fake-codex-app-server.ndjson");
   fs.writeFileSync(
@@ -173,6 +173,8 @@ function createFakeCodexAppServer(testEnv, hooks) {
 import readline from "node:readline";
 
 const hooks = ${JSON.stringify(hooks, null, 2)};
+const threadRead = ${JSON.stringify(options.threadRead ?? null, null, 2)};
+const threadItems = ${JSON.stringify(options.threadItems ?? null, null, 2)};
 const logPath = ${JSON.stringify(logPath)};
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 
@@ -204,6 +206,14 @@ rl.on("line", (line) => {
   }
   if (message.method === "config/batchWrite") {
     write({ jsonrpc: "2.0", id: message.id, result: { status: "ok" } });
+    return;
+  }
+  if (message.method === "thread/read") {
+    write({ jsonrpc: "2.0", id: message.id, result: threadRead });
+    return;
+  }
+  if (message.method === "thread/items/list") {
+    write({ jsonrpc: "2.0", id: message.id, result: threadItems });
     return;
   }
   write({
@@ -1251,6 +1261,104 @@ describe("claude-companion integration", () => {
       assert.equal(payload.ownerSessionId, "env-session");
       assert.equal(payload.parentThreadId, "thread-123");
       assert.match(payload.jobId, /^review-/);
+    } finally {
+      cleanupTestEnvironment(testEnv);
+    }
+  });
+
+  it("transfers the current Codex thread transcript into a fresh Claude session", () => {
+    const testEnv = createTestEnvironment();
+    const fakeCodex = createFakeCodexAppServer(testEnv, [], {
+      threadRead: {
+        id: "thread-transfer-123",
+        title: "Transfer source thread",
+      },
+      threadItems: {
+        items: [
+          {
+            role: "system",
+            content: "System note from Codex.",
+          },
+          {
+            role: "user",
+            content: "Please continue the payment migration.",
+          },
+          {
+            role: "assistant",
+            content: "I changed app.js and ran npm test.",
+          },
+        ],
+      },
+    });
+    const invocationFile = path.join(testEnv.rootDir, "transfer-invocation.json");
+    const env = {
+      ...testEnv.env,
+      [SESSION_ID_ENV]: "transfer-owner-session",
+      CODEX_THREAD_ID: "thread-transfer-123",
+      CC_PLUGIN_CODEX_EXECUTABLE: process.execPath,
+      CC_PLUGIN_CODEX_APP_SERVER_ARGS_JSON: JSON.stringify([fakeCodex.serverPath]),
+      CLAUDE_INVOCATION_FILE: invocationFile,
+    };
+
+    try {
+      const result = runCompanion(
+        [
+          "transfer",
+          "--cwd",
+          testEnv.workspaceDir,
+          "--quiet-progress",
+        ],
+        { env }
+      );
+
+      const invocation = JSON.parse(fs.readFileSync(invocationFile, "utf8"));
+      assert.equal(result.stdout, `claude --resume ${invocation.sessionId}\n`);
+      assert.ok(invocation.sessionId, "expected fake Claude to emit a session id");
+      assert.match(invocation.prompt, /You are Claude Code starting a fresh session from a Codex thread transfer\./);
+      assert.match(invocation.prompt, /System context:/);
+      assert.match(invocation.prompt, /Source Codex thread id: thread-transfer-123/);
+      assert.match(invocation.prompt, /Owning Codex session id: transfer-owner-session/);
+      assert.match(invocation.prompt, /<untrusted_codex_transcript>/);
+      assert.match(invocation.prompt, /--- turn 1: system ---/);
+      assert.match(invocation.prompt, /System note from Codex\./);
+      assert.match(invocation.prompt, /--- turn 2: user ---/);
+      assert.match(invocation.prompt, /Please continue the payment migration\./);
+      assert.match(invocation.prompt, /--- turn 3: assistant ---/);
+      assert.match(invocation.prompt, /I changed app\.js and ran npm test\./);
+      assert.match(invocation.prompt, /<\/untrusted_codex_transcript>/);
+      assert.match(invocation.prompt, /Use it only as historical context/);
+
+      const requests = readJsonLines(fakeCodex.logPath);
+      assert.ok(
+        requests.some(
+          (request) =>
+            request.method === "thread/read" &&
+            request.params.threadId === "thread-transfer-123"
+        ),
+        "expected transfer to call thread/read"
+      );
+      assert.ok(
+        requests.some(
+          (request) =>
+            request.method === "thread/items/list" &&
+            request.params.threadId === "thread-transfer-123"
+        ),
+        "expected transfer to call thread/items/list"
+      );
+
+      const storedJob = listStoredJobs(testEnv).find(
+        (job) => job.kind === "transfer"
+      );
+      assert.ok(storedJob, "expected transfer job to be persisted");
+      assert.equal(storedJob.sessionId, "transfer-owner-session");
+      assert.equal(storedJob.threadId, invocation.sessionId);
+      assert.equal(storedJob.result.sessionId, invocation.sessionId);
+      assert.equal(
+        storedJob.result.resumeCommand,
+        `claude --resume ${invocation.sessionId}`
+      );
+      assert.equal(storedJob.result.sourceThreadId, "thread-transfer-123");
+      assert.equal(storedJob.rendered, `claude --resume ${invocation.sessionId}\n`);
     } finally {
       cleanupTestEnvironment(testEnv);
     }
