@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.0
+
+- **Security: make the stop-time review gate and read-only task paths Bash-free.** The `SANDBOX_STOP_REVIEW_TOOLS` and `SANDBOX_READ_ONLY_TOOLS` allowlists previously carried raw `Bash(git …:*)` patterns. Per the Claude CLI's own behavior (documented in `scripts/lib/claude-cli.mjs`), any `Bash` allowlist entry opens the entire `Bash` tool, and the read-only sandbox leaves network unrestricted — together an exfiltration surface. Both paths now grant git read access through the same bundled read-only git MCP server the review path uses (`REVIEW_MCP_ALLOWED_TOOLS` / `mcp__gitReview__*`) with `--strict-mcp-config`, and the MCP config is cleaned up in a `finally` block. No `Bash` entry remains in either set.
+- **Add `$cc:transfer` — carry the current Codex thread into a fresh Claude Code session.** Reads the current Codex thread transcript through the app-server history APIs (`thread/read`, `thread/items/list`), wraps it as untrusted context, starts a fresh Claude Code session capturing its `session_id`, persists a tracked job, and prints the exact `claude --resume <session-id>` follow-up. Falls back to `--source <path>` / `--prompt-file <path>` when the app-server transcript is unavailable.
+- **Give `$cc:review` a rich, structured prompt.** The default review previously built a thin inline prompt with no severity taxonomy or output schema, while `$cc:adversarial-review` used a full template. Standard review now runs through the same structured path (`prompts/review.md`, severity taxonomy critical/high/medium/low, grounding rules, finding bar, and a JSON schema enforced via `--json-schema`), with severity-sorted findings. Review and adversarial review now differ only in prompt stance and verdict semantics, and both keep the read-only worktree + mcp-git isolation.
+
 ## v1.2.1
 
 - Switch marketplace installs to Codex native plugin hooks: bundled hooks now load from `hooks/hooks.json` in the active plugin cache with `$PLUGIN_ROOT` instead of writing managed global hook commands into `~/.codex/hooks.json`.

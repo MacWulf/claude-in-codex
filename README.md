@@ -300,6 +300,9 @@ The review gate is an **optional** stop-time hook. When enabled, pressing Ctrl+C
 
 ### Where This Goes Further
 
+- **Bash-free review gate & read-only tasks** — the stop-time review gate and read-only task paths grant git read access through a bundled read-only git MCP server instead of a `Bash(git …)` allowlist entry (which would open the full `Bash` tool), closing an exfiltration surface in the read-only sandbox.
+- **`$cc:transfer` hand-off** — carries the current Codex thread into a fresh Claude Code session and prints the exact `claude --resume <session-id>` to continue there.
+- **Structured default review** — `$cc:review` uses a severity-taxonomy prompt and a JSON output schema (not just adversarial review), returning severity-sorted findings.
 - **Smart review gate** — fingerprints the working tree and skips review when the last Codex turn made no net edits, avoiding unnecessary token spend.
 - **Nested-session awareness** — suppresses stop-time review and unread-result prompts in child runs, keeping interactive hooks attached to the user-facing thread only.
 - **Tracked job ownership** — background jobs track unread/viewed state and session ownership, with safe PID-validated cleanup on session exit.
