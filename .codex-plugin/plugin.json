@@ -31,6 +31,7 @@
     "websiteURL": "https://github.com/MacWulf/claude-in-codex",
     "defaultPrompt": [
       "Use Claude Code to review my current changes through $cc:review",
+      "List available Claude models through $cc:models",
       "Use Claude Code to challenge this implementation through $cc:adversarial-review",
       "Use Claude Code to investigate and fix this issue through $cc:rescue",
       "Use Claude Code to transfer this thread through $cc:transfer"

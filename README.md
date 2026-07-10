@@ -123,6 +123,7 @@ the result.
 
 | Command | What it does |
 | --- | --- |
+| `$cc:models` | List available Claude models using cached API metadata with CLI-alias fallback |
 | `$cc:review` | Read-only Claude Code review of your changes (structured, severity-sorted) |
 | `$cc:adversarial-review` | Design-challenging review — questions approach, tradeoffs, hidden assumptions |
 | `$cc:rescue` | Hand a task to Claude Code — bugs, fixes, investigations, follow-ups |
@@ -160,6 +161,18 @@ verbatim, so a newer model works without an update; the three aliases can also b
 `CC_PLUGIN_CODEX_MODEL_OPUS` / `CC_PLUGIN_CODEX_MODEL_SONNET` / `CC_PLUGIN_CODEX_MODEL_HAIKU` env
 vars. Findings come back on a `critical / high / medium / low` severity scale, sorted by severity.
 
+### `$cc:models`
+
+List available models from Anthropic's Models API. Results are cached for 24 hours; use
+`--refresh` to bypass the cache or `--json` for machine-readable output. Without API credentials,
+the command falls back to the Claude CLI aliases `opus`, `sonnet`, and `haiku`.
+
+```text
+$cc:models
+$cc:models --refresh
+$cc:models --json
+```
+
 Scope `auto` (default) inspects `git status` and chooses working-tree vs branch automatically. Very
 large diffs degrade gracefully to compact status/stat context, with Claude directed to inspect the
 diff through read-only git tools.
@@ -194,7 +207,7 @@ $cc:rescue --background investigate the regression
 | `--fresh` | Force a new task (don't resume) |
 | `--write` | Allow file edits (default) |
 | `--model <model>` | `opus`, `sonnet`, `haiku`, or a full ID (default `opus`) |
-| `--effort <level>` | `auto`, `low` … `max` (default `auto`, delegated to Claude CLI) |
+| `--effort <level>` | `auto`, `low` … `max`; unknown future values are delegated to Claude CLI |
 | `--prompt-file <path>` | Read the task description from a file |
 
 If you don't pass `--resume` or `--fresh`, rescue detects a resumable Claude session and asks once

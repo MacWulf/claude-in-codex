@@ -617,11 +617,9 @@ describe("resolveEffort", () => {
     assert.equal(resolveEffort("XHIGH"), "xhigh");
   });
 
-  it("throws on unsupported effort values", () => {
-    assert.throws(
-      () => resolveEffort("ultra"),
-      /Unsupported effort "ultra"/
-    );
+  it("passes future effort values through to Claude CLI", () => {
+    assert.equal(resolveEffort("ultra"), "ultra");
+    assert.equal(resolveEffort(" Turbo "), "turbo");
   });
 
   it("returns undefined for null/undefined input", () => {

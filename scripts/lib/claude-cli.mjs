@@ -642,9 +642,10 @@ export function resolveEffort(effort) {
   if (VALID_EFFORTS.has(resolved)) {
     return resolved;
   }
-  throw new Error(
-    `Unsupported effort "${effort}". Use one of: ${[...VALID_EFFORTS].join(", ")}.`
-  );
+  // Keep future effort values compatible. The Claude CLI is the authority for
+  // validating provider capabilities; this wrapper must not reject a new value
+  // before it reaches the underlying CLI.
+  return resolved;
 }
 
 // ---------------------------------------------------------------------------

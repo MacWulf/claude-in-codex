@@ -4,6 +4,8 @@
 
 - Delegate the `opus`, `sonnet`, and `haiku` aliases to Claude CLI so new model generations are picked up without plugin version pins.
 - Let Claude CLI choose the default effort for the selected model; explicit effort values and `--effort auto` remain supported.
+- Add `$cc:models` with cached Anthropic Models API metadata and a CLI-alias fallback.
+- Delegate unknown explicit effort values to Claude CLI instead of rejecting them in the wrapper.
 
 ## v1.4.0
 

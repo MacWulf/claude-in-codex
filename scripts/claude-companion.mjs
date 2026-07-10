@@ -14,7 +14,7 @@
  *   (each overridable via CC_PLUGIN_CODEX_MODEL_OPUS / _SONNET / _HAIKU)
  * - Default model when --model is unset: opus
  * - Default effort: unset, so Claude CLI chooses for the current model
- * - Explicit Claude CLI effort values: low, medium, high, xhigh, max
+ * - Explicit Claude CLI effort values: known values are normalized, future values are delegated
  * - Legacy effort aliases: none|minimal -> low
  * - Review gate matches upstream setup semantics: Stop hook runs when enabled
  *
@@ -119,6 +119,7 @@ import {
   renderTaskResult,
   renderTransferBootstrapPrompt
 } from "./lib/render.mjs";
+import { getModelsCatalog, renderModelsCatalog } from "./lib/models-catalog.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const REVIEW_SCHEMA_PATH = path.join(ROOT_DIR, "schemas", "review-output.schema.json");
@@ -136,6 +137,7 @@ function printUsage() {
     [
       "Usage:",
       "  node scripts/claude-companion.mjs setup [--enable-review-gate|--disable-review-gate] [--json]",
+      "  node scripts/claude-companion.mjs models [--refresh] [--json]",
       "  node scripts/claude-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <model|opus|sonnet|haiku>] [--effort <auto|low|medium|high|xhigh|max>]",
       "  node scripts/claude-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <model|opus|sonnet|haiku>] [--effort <auto|low|medium|high|xhigh|max>] [focus text]",
       "  node scripts/claude-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|opus|sonnet|haiku>] [--effort <auto|low|medium|high|xhigh|max>] [prompt]",
@@ -645,6 +647,16 @@ async function handleSetup(argv) {
     options.json ? finalReport : renderSetupReport(finalReport),
     options.json
   );
+}
+
+async function handleModels(argv) {
+  const { options } = parseCommandInput(argv, {
+    booleanOptions: ["json", "refresh"],
+  });
+  const catalog = await getModelsCatalog({
+    refresh: Boolean(options.refresh),
+  });
+  outputResult(options.json ? catalog : renderModelsCatalog(catalog), options.json);
 }
 
 // ---------------------------------------------------------------------------
@@ -2253,6 +2265,9 @@ async function main() {
   switch (subcommand) {
     case "setup":
       await handleSetup(argv);
+      break;
+    case "models":
+      await handleModels(argv);
       break;
     case "review":
       await handleReview(argv);

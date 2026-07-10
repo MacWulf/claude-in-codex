@@ -1,0 +1,8 @@
+# Copyright 2026 Sendbird, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+interface:
+  display_name: "Claude Code Models"
+  short_description: "List available Claude models with cached API metadata and CLI-alias fallback."
+policy:
+  allow_implicit_invocation: false
