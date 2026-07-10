@@ -872,7 +872,8 @@ async function executeTaskRun(request) {
   };
 
   // workspace-write: all tools (no allowedTools = everything including MCP/Skill/Agent)
-  // read-only: strict whitelist — read + web + read-only git MCP, no Bash/Skill
+  // read-only: strict whitelist — read + web + best-effort read-only git MCP,
+  // no Bash/Skill. Non-git workspaces can still run without the MCP server.
   if (!request.write) {
     claudeOptions.allowedTools = SANDBOX_READ_ONLY_TOOLS;
   }
@@ -890,9 +891,15 @@ async function executeTaskRun(request) {
   let result;
   try {
     if (!request.write) {
-      mcpConfigFile = createReviewMcpConfig(getRepoRoot(workspaceRoot));
-      claudeOptions.mcpConfigFile = mcpConfigFile;
-      claudeOptions.strictMcpConfig = true;
+      let gitRoot = null;
+      try {
+        gitRoot = getRepoRoot(workspaceRoot);
+      } catch {}
+      if (gitRoot) {
+        mcpConfigFile = createReviewMcpConfig(gitRoot);
+        claudeOptions.mcpConfigFile = mcpConfigFile;
+        claudeOptions.strictMcpConfig = true;
+      }
     }
     result = await runClaudeTurn(workspaceRoot, prompt, {
       ...claudeOptions,
