@@ -12,7 +12,7 @@
   <a href="#-quick-start"><img src="https://img.shields.io/badge/quick%20start-2%20min-7B39FE?style=flat-square" alt="Quick start" /></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A518-3DDBB0?style=flat-square" alt="Node 18+" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-D97757?style=flat-square" alt="Apache-2.0" />
-  <img src="https://img.shields.io/badge/tests-481%20passing-10A37F?style=flat-square" alt="481 tests passing" />
+  <img src="https://img.shields.io/badge/tests-481%20unit%20%2B%2041%20integration-10A37F?style=flat-square" alt="481 unit and 41 integration tests passing" />
 </p>
 
 <p align="center">
@@ -47,13 +47,14 @@ $cc:transfer                  # continue this whole thread in a fresh Claude ses
 
 ## ✨ What's different in this fork
 
-This fork adds three things on top of the upstream `sendbird/cc-plugin-codex`:
+This fork adds four things on top of the upstream `sendbird/cc-plugin-codex`:
 
 | | Upstream | **claude-in-codex** |
 | --- | --- | --- |
 | 🔒 **Review gate & read-only tasks** | git access via a `Bash(git …)` allowlist entry | **Bash-free** — git reads go through a sandboxed read-only git MCP server, so no full-Bash surface is opened in a network-open sandbox |
 | 🔁 **Thread transfer** | — | **`$cc:transfer`** carries the current Codex thread into a fresh Claude Code session and prints the exact `claude --resume` to continue |
 | 🔎 **Default review depth** | thin inline prompt | **structured prompt** with a severity taxonomy + JSON output schema, returning severity-sorted findings |
+| 🧭 **Model discovery & future compatibility** | hard-coded provider assumptions | **`$cc:models`** catalog, 24-hour cache, CLI-alias fallback, and passthrough for future model/effort names |
 
 > **Why the security fix matters:** the Claude CLI treats *any* `Bash` allowlist entry as opening the
 > **entire** `Bash` tool. Combined with a read-only sandbox that still allows network, that's an
@@ -61,7 +62,7 @@ This fork adds three things on top of the upstream `sendbird/cc-plugin-codex`:
 > (`mcp__gitReview__*`) with `--strict-mcp-config` instead — no `Bash` entry anywhere in the
 > stop-gate or read-only task paths.
 
-See the [CHANGELOG](CHANGELOG.md) for the full `v1.3.0` notes.
+See the [CHANGELOG](CHANGELOG.md) for the complete release notes.
 
 ---
 
@@ -93,6 +94,11 @@ codex plugin add cc@claude-in-codex
 
 The plugin installs under Codex's plugin cache and loads its hooks from `hooks/hooks.json` via
 `$PLUGIN_ROOT`.
+
+The plugin itself runs locally. Claude Code still needs to be installed and authenticated locally;
+the optional `$cc:models` catalog uses `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` for live API
+metadata. Without those variables it remains usable and falls back to the Claude CLI aliases
+`opus`, `sonnet`, and `haiku`.
 
 ### 2. Verify
 
@@ -164,8 +170,9 @@ vars. Findings come back on a `critical / high / medium / low` severity scale, s
 ### `$cc:models`
 
 List available models from Anthropic's Models API. Results are cached for 24 hours; use
-`--refresh` to bypass the cache or `--json` for machine-readable output. Without API credentials,
-the command falls back to the Claude CLI aliases `opus`, `sonnet`, and `haiku`.
+`--refresh` to bypass the cache or `--json` for machine-readable output. With API credentials, the
+catalog is fetched from `https://api.anthropic.com/v1/models`; without them, the command falls back
+to the Claude CLI aliases `opus`, `sonnet`, and `haiku`. API keys are never written to the cache.
 
 ```text
 $cc:models
@@ -176,6 +183,11 @@ $cc:models --json
 Scope `auto` (default) inspects `git status` and chooses working-tree vs branch automatically. Very
 large diffs degrade gracefully to compact status/stat context, with Claude directed to inspect the
 diff through read-only git tools.
+
+Model aliases are resolved by Claude CLI, not pinned to provider version IDs. Full model IDs are
+passed through unchanged, and explicit effort values are delegated to Claude CLI. This means a new
+Claude model or effort level can be used without waiting for a plugin release, provided the installed
+Claude CLI supports it.
 
 ### `$cc:adversarial-review`
 
@@ -305,7 +317,12 @@ Claude Code review of the last Codex response before the stop is accepted.
 - Jobs are stored in a CAS-locked JSON job store under a per-session state root.
 - The stop-time gate is a native Codex `stop` hook wired through `hooks/hooks.json`.
 
-Run the test suite with `npm test` (481 tests, `node:test`).
+Run the test suites with:
+
+```bash
+npm test                 # 481 unit tests
+npm run test:integration # 41 integration tests
+```
 
 ---
 
