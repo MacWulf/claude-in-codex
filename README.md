@@ -153,10 +153,12 @@ $cc:review --model sonnet         # switch to sonnet (defaults to high effort)
 
 **Flags:** `--base <ref>`, `--scope <auto|working-tree|branch>`, `--wait`, `--background`, `--model <model>`, `--effort <low|medium|high|xhigh|max>`
 
-**Defaults:** model `opus` (resolves to the 1M-context `claude-opus-4-7[1m]`) at `xhigh` effort.
-`sonnet` resolves to `claude-sonnet-4-6[1m]` at `high`; `haiku` resolves to `claude-haiku-4-5` with
-effort unset. Findings come back on a `critical / high / medium / low` severity scale, sorted by
-severity.
+**Defaults:** model `opus` (resolves to the 1M-context `claude-opus-4-8[1m]`) at `xhigh` effort.
+`sonnet` resolves to `claude-sonnet-5[1m]` at `high`; `haiku` resolves to `claude-haiku-4-5` with
+effort unset. Any full model ID passed to `--model` is forwarded verbatim, so a newer model works
+without an update; the three aliases can also be retargeted via the
+`CC_PLUGIN_CODEX_MODEL_OPUS` / `CC_PLUGIN_CODEX_MODEL_SONNET` / `CC_PLUGIN_CODEX_MODEL_HAIKU` env
+vars. Findings come back on a `critical / high / medium / low` severity scale, sorted by severity.
 
 Scope `auto` (default) inspects `git status` and chooses working-tree vs branch automatically. Very
 large diffs degrade gracefully to compact status/stat context, with Claude directed to inspect the

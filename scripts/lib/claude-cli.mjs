@@ -568,11 +568,41 @@ export function pruneStaleReviewMcpConfigs(options = {}) {
 // Model & Effort Mapping
 // ---------------------------------------------------------------------------
 
-export const MODEL_ALIASES = new Map([
-  ["opus", "claude-opus-4-7[1m]"],
-  ["sonnet", "claude-sonnet-4-6[1m]"],
-  ["haiku", "claude-haiku-4-5"],
-]);
+// Convenience aliases for the three tiers, pinned to the current-generation
+// defaults. Full model IDs are always forwarded verbatim to `claude --model`
+// (see resolveModel), so a brand-new model ID works with no code change; these
+// aliases only back the bare `opus`/`sonnet`/`haiku` shortcuts. Each alias
+// target is overridable via an env var so a maintainer can retarget a tier when
+// a newer model ships without editing this file:
+//   CC_PLUGIN_CODEX_MODEL_OPUS / _SONNET / _HAIKU
+export const DEFAULT_MODEL_ALIASES = Object.freeze({
+  opus: "claude-opus-4-8[1m]",
+  sonnet: "claude-sonnet-5[1m]",
+  haiku: "claude-haiku-4-5",
+});
+
+export const MODEL_ALIAS_ENV_VARS = Object.freeze({
+  opus: "CC_PLUGIN_CODEX_MODEL_OPUS",
+  sonnet: "CC_PLUGIN_CODEX_MODEL_SONNET",
+  haiku: "CC_PLUGIN_CODEX_MODEL_HAIKU",
+});
+
+/**
+ * Build the alias→model-ID map, letting the CC_PLUGIN_CODEX_MODEL_* env vars
+ * override the pinned defaults. A blank/whitespace-only override is ignored.
+ */
+/** @visibleForTesting */
+export function buildModelAliases(env = process.env) {
+  return new Map(
+    Object.entries(DEFAULT_MODEL_ALIASES).map(([alias, fallback]) => {
+      const override = env[MODEL_ALIAS_ENV_VARS[alias]];
+      const trimmed = typeof override === "string" ? override.trim() : "";
+      return [alias, trimmed !== "" ? trimmed : fallback];
+    })
+  );
+}
+
+export const MODEL_ALIASES = buildModelAliases();
 
 export const EFFORT_ALIASES = {
   none: "low",
@@ -585,11 +615,11 @@ export const DEFAULT_MODEL = "opus";
 
 export const DEFAULT_EFFORT_BY_MODEL = new Map([
   ["opus", "xhigh"],
-  ["claude-opus-4-7", "xhigh"],
-  ["claude-opus-4-7[1m]", "xhigh"],
+  ["claude-opus-4-8", "xhigh"],
+  ["claude-opus-4-8[1m]", "xhigh"],
   ["sonnet", "high"],
-  ["claude-sonnet-4-6", "high"],
-  ["claude-sonnet-4-6[1m]", "high"],
+  ["claude-sonnet-5", "high"],
+  ["claude-sonnet-5[1m]", "high"],
 ]);
 
 export function resolveDefaultModel(model) {

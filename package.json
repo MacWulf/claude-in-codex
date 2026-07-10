@@ -1,6 +1,6 @@
 {
   "name": "claude-in-codex",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Run Claude Code reviews, rescues, and thread transfers from inside Codex. A fork of sendbird/cc-plugin-codex with a Bash-free review gate, thread transfer, and a structured default review.",
   "type": "module",
   "author": {
