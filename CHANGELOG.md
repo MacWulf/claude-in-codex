@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Delegate the `opus`, `sonnet`, and `haiku` aliases to Claude CLI so new model generations are picked up without plugin version pins.
+- Let Claude CLI choose the default effort for the selected model; explicit effort values and `--effort auto` remain supported.
+
 ## v1.4.0
 
 - **Bump the model aliases to the current generation.** `opus` now resolves to the 1M-context `claude-opus-4-8[1m]` (was `claude-opus-4-7[1m]`) and `sonnet` to `claude-sonnet-5[1m]` (was `claude-sonnet-4-6[1m]`); `haiku` stays on `claude-haiku-4-5`. Default effort is unchanged (opus `xhigh`, sonnet `high`, haiku unset). Full model IDs passed to `--model` are still forwarded verbatim, so a newer model works with no code change.

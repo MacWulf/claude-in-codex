@@ -144,19 +144,19 @@ Standard read-only review of your current work, isolated in an ephemeral `git wo
 read-only git MCP server.
 
 ```text
-$cc:review                        # review uncommitted changes (default: opus + xhigh effort)
+$cc:review                        # review uncommitted changes (default: opus + CLI-selected effort)
 $cc:review --base main            # review branch vs main
 $cc:review --scope branch         # compare branch tip to base
 $cc:review --background           # run in background, check with $cc:status later
 $cc:review --model sonnet         # switch to sonnet (defaults to high effort)
 ```
 
-**Flags:** `--base <ref>`, `--scope <auto|working-tree|branch>`, `--wait`, `--background`, `--model <model>`, `--effort <low|medium|high|xhigh|max>`
+**Flags:** `--base <ref>`, `--scope <auto|working-tree|branch>`, `--wait`, `--background`, `--model <model>`, `--effort <auto|low|medium|high|xhigh|max>`
 
-**Defaults:** model `opus` (resolves to the 1M-context `claude-opus-4-8[1m]`) at `xhigh` effort.
-`sonnet` resolves to `claude-sonnet-5[1m]` at `high`; `haiku` resolves to `claude-haiku-4-5` with
-effort unset. Any full model ID passed to `--model` is forwarded verbatim, so a newer model works
-without an update; the three aliases can also be retargeted via the
+**Defaults:** model `opus`, with effort unset so the Claude CLI selects the appropriate level for
+the current model. `sonnet` and `haiku` are also delegated to Claude CLI aliases. Use
+`--effort auto` to make this behavior explicit. Any full model ID passed to `--model` is forwarded
+verbatim, so a newer model works without an update; the three aliases can also be retargeted via the
 `CC_PLUGIN_CODEX_MODEL_OPUS` / `CC_PLUGIN_CODEX_MODEL_SONNET` / `CC_PLUGIN_CODEX_MODEL_HAIKU` env
 vars. Findings come back on a `critical / high / medium / low` severity scale, sorted by severity.
 
@@ -194,7 +194,7 @@ $cc:rescue --background investigate the regression
 | `--fresh` | Force a new task (don't resume) |
 | `--write` | Allow file edits (default) |
 | `--model <model>` | `opus`, `sonnet`, `haiku`, or a full ID (default `opus`) |
-| `--effort <level>` | `low` … `max` (default `xhigh` for opus, `high` for sonnet) |
+| `--effort <level>` | `auto`, `low` … `max` (default `auto`, delegated to Claude CLI) |
 | `--prompt-file <path>` | Read the task description from a file |
 
 If you don't pass `--resume` or `--fresh`, rescue detects a resumable Claude session and asks once

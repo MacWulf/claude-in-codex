@@ -568,17 +568,16 @@ export function pruneStaleReviewMcpConfigs(options = {}) {
 // Model & Effort Mapping
 // ---------------------------------------------------------------------------
 
-// Convenience aliases for the three tiers, pinned to the current-generation
-// defaults. Full model IDs are always forwarded verbatim to `claude --model`
-// (see resolveModel), so a brand-new model ID works with no code change; these
-// aliases only back the bare `opus`/`sonnet`/`haiku` shortcuts. Each alias
-// target is overridable via an env var so a maintainer can retarget a tier when
-// a newer model ships without editing this file:
+// Convenience aliases for the three tiers. The Claude CLI owns the meaning of
+// these aliases and may retarget them as new models ship. Full model IDs are
+// also forwarded verbatim to `claude --model` (see resolveModel), so callers
+// can pin a specific model when they need reproducibility. Each alias remains
+// overridable via an env var for explicit pinning or emergency rollback:
 //   CC_PLUGIN_CODEX_MODEL_OPUS / _SONNET / _HAIKU
 export const DEFAULT_MODEL_ALIASES = Object.freeze({
-  opus: "claude-opus-4-8[1m]",
-  sonnet: "claude-sonnet-5[1m]",
-  haiku: "claude-haiku-4-5",
+  opus: "opus",
+  sonnet: "sonnet",
+  haiku: "haiku",
 });
 
 export const MODEL_ALIAS_ENV_VARS = Object.freeze({
@@ -613,35 +612,6 @@ export const VALID_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 export const DEFAULT_MODEL = "opus";
 
-// Per-tier effort defaults, keyed on the bare alias plus the pinned default IDs
-// (with and without the [1m] variant). haiku intentionally has no default.
-const DEFAULT_EFFORT_BY_ALIAS = Object.freeze({ opus: "xhigh", sonnet: "high" });
-
-/**
- * Build the model→effort-default map. In addition to the static keys, the
- * env-resolved alias target for each tier is added, so retargeting an alias via
- * CC_PLUGIN_CODEX_MODEL_* keeps that tier's effort default instead of silently
- * dropping `--effort` when `--model <alias>` resolves to the override ID.
- */
-/** @visibleForTesting */
-export function buildDefaultEffortByModel(env = process.env) {
-  const map = new Map([
-    ["opus", "xhigh"],
-    ["claude-opus-4-8", "xhigh"],
-    ["claude-opus-4-8[1m]", "xhigh"],
-    ["sonnet", "high"],
-    ["claude-sonnet-5", "high"],
-    ["claude-sonnet-5[1m]", "high"],
-  ]);
-  const aliases = buildModelAliases(env);
-  for (const [alias, effort] of Object.entries(DEFAULT_EFFORT_BY_ALIAS)) {
-    map.set(aliases.get(alias), effort);
-  }
-  return map;
-}
-
-export const DEFAULT_EFFORT_BY_MODEL = buildDefaultEffortByModel();
-
 export function resolveDefaultModel(model) {
   if (model == null || String(model).trim() === "") {
     return DEFAULT_MODEL;
@@ -653,8 +623,9 @@ export function resolveDefaultEffort(model, effort) {
   if (effort != null && String(effort).trim() !== "") {
     return effort;
   }
-  const key = String(model ?? "").trim().toLowerCase();
-  return DEFAULT_EFFORT_BY_MODEL.get(key);
+  // Omit --effort by default. Claude Code can choose the appropriate effort
+  // for the current model alias, including aliases introduced in the future.
+  return undefined;
 }
 
 export function resolveModel(model) {
@@ -666,6 +637,7 @@ export function resolveEffort(effort) {
   if (!effort) return undefined;
   const normalized = String(effort).trim().toLowerCase();
   if (!normalized) return undefined;
+  if (normalized === "auto") return undefined;
   const resolved = EFFORT_ALIASES[normalized] ?? normalized;
   if (VALID_EFFORTS.has(resolved)) {
     return resolved;
@@ -705,7 +677,10 @@ export function buildArgs(prompt, options = {}) {
     args.push("--model", resolveModel(options.model));
   }
   if (options.effort) {
-    args.push("--effort", resolveEffort(options.effort));
+    const effort = resolveEffort(options.effort);
+    if (effort) {
+      args.push("--effort", effort);
+    }
   }
   if (options.sessionId) {
     args.push("--session-id", options.sessionId);

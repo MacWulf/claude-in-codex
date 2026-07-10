@@ -17,11 +17,9 @@ import {
   DEFAULT_MODEL_ALIASES,
   MODEL_ALIAS_ENV_VARS,
   buildModelAliases,
-  buildDefaultEffortByModel,
   EFFORT_ALIASES,
   VALID_EFFORTS,
   DEFAULT_MODEL,
-  DEFAULT_EFFORT_BY_MODEL,
   SANDBOX_READ_ONLY_TOOLS,
   SANDBOX_TEMP_DIR,
   SANDBOX_SETTINGS,
@@ -447,12 +445,12 @@ describe("validateTurnCompletion", () => {
 // ===========================================================================
 
 describe("resolveModel", () => {
-  it("maps 'sonnet' to the 1M variant 'claude-sonnet-5[1m]'", () => {
-    assert.equal(resolveModel("sonnet"), "claude-sonnet-5[1m]");
+  it("delegates the 'sonnet' alias to Claude CLI", () => {
+    assert.equal(resolveModel("sonnet"), "sonnet");
   });
 
-  it("maps 'haiku' to 'claude-haiku-4-5'", () => {
-    assert.equal(resolveModel("haiku"), "claude-haiku-4-5");
+  it("delegates the 'haiku' alias to Claude CLI", () => {
+    assert.equal(resolveModel("haiku"), "haiku");
   });
 
   it("passes through unknown model names", () => {
@@ -468,8 +466,8 @@ describe("resolveModel", () => {
     assert.equal(resolveModel(""), undefined);
   });
 
-  it("maps 'opus' to the 1M variant 'claude-opus-4-8[1m]'", () => {
-    assert.equal(resolveModel("opus"), "claude-opus-4-8[1m]");
+  it("delegates the 'opus' alias to Claude CLI", () => {
+    assert.equal(resolveModel("opus"), "opus");
   });
 
   it("MODEL_ALIASES map has expected entries", () => {
@@ -479,10 +477,10 @@ describe("resolveModel", () => {
     assert.ok(MODEL_ALIASES.has("haiku"));
   });
 
-  it("MODEL_ALIASES default pins are the current-generation IDs", () => {
-    assert.equal(MODEL_ALIASES.get("opus"), "claude-opus-4-8[1m]");
-    assert.equal(MODEL_ALIASES.get("sonnet"), "claude-sonnet-5[1m]");
-    assert.equal(MODEL_ALIASES.get("haiku"), "claude-haiku-4-5");
+  it("MODEL_ALIASES delegates defaults to Claude CLI aliases", () => {
+    assert.equal(MODEL_ALIASES.get("opus"), "opus");
+    assert.equal(MODEL_ALIASES.get("sonnet"), "sonnet");
+    assert.equal(MODEL_ALIASES.get("haiku"), "haiku");
   });
 });
 
@@ -491,7 +489,7 @@ describe("resolveModel", () => {
 // ===========================================================================
 
 describe("buildModelAliases", () => {
-  it("returns the pinned defaults when no override env vars are set", () => {
+  it("returns the Claude CLI aliases when no override env vars are set", () => {
     const aliases = buildModelAliases({});
     assert.equal(aliases.get("opus"), DEFAULT_MODEL_ALIASES.opus);
     assert.equal(aliases.get("sonnet"), DEFAULT_MODEL_ALIASES.sonnet);
@@ -535,35 +533,6 @@ describe("buildModelAliases", () => {
 });
 
 // ===========================================================================
-// buildDefaultEffortByModel (retargeted aliases keep their tier effort)
-// ===========================================================================
-
-describe("buildDefaultEffortByModel", () => {
-  it("keeps the static tier defaults with no override", () => {
-    const map = buildDefaultEffortByModel({});
-    assert.equal(map.get("opus"), "xhigh");
-    assert.equal(map.get("claude-opus-4-8[1m]"), "xhigh");
-    assert.equal(map.get("sonnet"), "high");
-    assert.equal(map.get("claude-sonnet-5[1m]"), "high");
-    assert.equal(map.has("haiku"), false);
-  });
-
-  it("carries the tier effort onto an env-retargeted alias target", () => {
-    const map = buildDefaultEffortByModel({
-      CC_PLUGIN_CODEX_MODEL_SONNET: "claude-sonnet-6[1m]",
-      CC_PLUGIN_CODEX_MODEL_OPUS: "claude-opus-9",
-    });
-    // Regression guard: `--model sonnet` with an override resolves to the
-    // override ID, which must still map to the sonnet tier's `high` effort.
-    assert.equal(map.get("claude-sonnet-6[1m]"), "high");
-    assert.equal(map.get("claude-opus-9"), "xhigh");
-    // Static defaults remain present too.
-    assert.equal(map.get("sonnet"), "high");
-    assert.equal(map.get("claude-opus-4-8[1m]"), "xhigh");
-  });
-});
-
-// ===========================================================================
 // resolveDefaultModel / resolveDefaultEffort
 // ===========================================================================
 
@@ -587,25 +556,9 @@ describe("resolveDefaultModel", () => {
 });
 
 describe("resolveDefaultEffort", () => {
-  it("defaults to xhigh for opus alias and resolved id (including 1M variant)", () => {
-    assert.equal(resolveDefaultEffort("opus", null), "xhigh");
-    assert.equal(resolveDefaultEffort("claude-opus-4-8", null), "xhigh");
-    assert.equal(resolveDefaultEffort("claude-opus-4-8[1m]", null), "xhigh");
-    assert.equal(resolveDefaultEffort("OPUS", undefined), "xhigh");
-  });
-
-  it("defaults to high for sonnet alias and resolved id (including 1M variant)", () => {
-    assert.equal(resolveDefaultEffort("sonnet", null), "high");
-    assert.equal(resolveDefaultEffort("claude-sonnet-5", null), "high");
-    assert.equal(resolveDefaultEffort("claude-sonnet-5[1m]", null), "high");
-  });
-
-  it("returns undefined for haiku (no effort default)", () => {
-    assert.equal(resolveDefaultEffort("haiku", null), undefined);
-    assert.equal(resolveDefaultEffort("claude-haiku-4-5", undefined), undefined);
-  });
-
-  it("returns undefined for unknown model when effort not provided", () => {
+  it("lets Claude CLI choose the effort when none is explicit", () => {
+    assert.equal(resolveDefaultEffort("opus", null), undefined);
+    assert.equal(resolveDefaultEffort("sonnet", undefined), undefined);
     assert.equal(resolveDefaultEffort("some-future-model", null), undefined);
   });
 
@@ -617,18 +570,8 @@ describe("resolveDefaultEffort", () => {
   });
 
   it("treats blank effort as missing", () => {
-    assert.equal(resolveDefaultEffort("opus", ""), "xhigh");
-    assert.equal(resolveDefaultEffort("opus", "   "), "xhigh");
-  });
-
-  it("DEFAULT_EFFORT_BY_MODEL contains the expected entries", () => {
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("opus"), "xhigh");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("claude-opus-4-8"), "xhigh");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("claude-opus-4-8[1m]"), "xhigh");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("sonnet"), "high");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("claude-sonnet-5"), "high");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.get("claude-sonnet-5[1m]"), "high");
-    assert.equal(DEFAULT_EFFORT_BY_MODEL.has("haiku"), false);
+    assert.equal(resolveDefaultEffort("opus", ""), undefined);
+    assert.equal(resolveDefaultEffort("opus", "   "), undefined);
   });
 });
 
@@ -663,6 +606,10 @@ describe("resolveEffort", () => {
 
   it("maps 'max' to 'max'", () => {
     assert.equal(resolveEffort("max"), "max");
+  });
+
+  it("maps 'auto' to no explicit CLI effort", () => {
+    assert.equal(resolveEffort("auto"), undefined);
   });
 
   it("normalizes canonical effort values to lowercase", () => {
@@ -746,7 +693,12 @@ describe("buildArgs", () => {
     const args = buildArgs("p", { model: "sonnet" });
     const idx = args.indexOf("--model");
     assert.ok(idx >= 0);
-    assert.equal(args[idx + 1], "claude-sonnet-5[1m]");
+    assert.equal(args[idx + 1], "sonnet");
+  });
+
+  it("omits --effort when effort is auto", () => {
+    const args = buildArgs("p", { model: "opus", effort: "auto" });
+    assert.equal(args.includes("--effort"), false);
   });
 
   it("includes --effort with resolved effort", () => {

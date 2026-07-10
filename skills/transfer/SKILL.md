@@ -1,6 +1,6 @@
 ---
 name: transfer
-description: 'Start a fresh Claude Code session from the current Codex thread transcript. Args: --wait, --background, --model <model>, --effort <low|medium|high|xhigh|max>, --source <path>, --prompt-file <path>. Prints claude --resume <session_id>.'
+description: 'Start a fresh Claude Code session from the current Codex thread transcript. Args: --wait, --background, --model <model>, --effort <auto|low|medium|high|xhigh|max>, --source <path>, --prompt-file <path>. Prints claude --resume <session_id>.'
 ---
 
 <!--
@@ -23,7 +23,7 @@ Resolve `<plugin-root>` as two directories above this `SKILL.md` file. Always ru
 Raw slash-command arguments:
 `$ARGUMENTS`
 
-Supported arguments: `--wait`, `--background`, `--model <model>`, `--effort <low|medium|high|xhigh|max>`, `--source <path>`, `--prompt-file <path>`
+Supported arguments: `--wait`, `--background`, `--model <model>`, `--effort <auto|low|medium|high|xhigh|max>`, `--source <path>`, `--prompt-file <path>`
 
 Main-thread routing rules:
 - If the user explicitly invoked `$cc:transfer` or `Claude Code Transfer`, do not keep the work in the main Codex thread. Delegate it.
