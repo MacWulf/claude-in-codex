@@ -162,6 +162,29 @@ test("stale cache is returned when refresh fails", async (t) => {
   assert.match(stale.warning, /service unavailable/);
 });
 
+test("rejects cache entries with an unsupported version", async (t) => {
+  const cache = tempCacheFile();
+  t.after(cache.cleanup);
+  fs.writeFileSync(
+    cache.file,
+    JSON.stringify({
+      version: 2,
+      source: "api",
+      fetchedAt: "2026-07-11T00:00:00.000Z",
+      models: [{ id: "old-model" }],
+    })
+  );
+
+  const catalog = await getModelsCatalog({
+    cacheFile: cache.file,
+    env: {},
+    now: Date.parse("2026-07-11T01:00:00Z"),
+  });
+
+  assert.equal(catalog.source, "cli-alias-fallback");
+  assert.equal(catalog.models[0].id, "opus");
+});
+
 test("renderModelsCatalog produces a compact human-readable table", () => {
   const output = renderModelsCatalog({
     source: "api",
@@ -170,4 +193,13 @@ test("renderModelsCatalog produces a compact human-readable table", () => {
   });
   assert.match(output, /Claude Models/);
   assert.match(output, /claude-future-1/);
+});
+
+test("renderModelsCatalog escapes markdown table separators", () => {
+  const output = renderModelsCatalog({
+    source: "api",
+    models: [{ id: "model|id", displayName: "Display | name" }],
+    warning: null,
+  });
+  assert.match(output, /\| model\\\|id \| Display \\\| name \|/);
 });

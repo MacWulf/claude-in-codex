@@ -59,7 +59,12 @@ function buildFallbackCatalog(warning, now = Date.now()) {
 }
 
 function validateCatalog(value) {
-  if (!value || typeof value !== "object" || !Array.isArray(value.models)) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    value.version !== 1 ||
+    !Array.isArray(value.models)
+  ) {
     return null;
   }
   const models = value.models.map(normalizeModel).filter(Boolean);
@@ -204,13 +209,16 @@ export async function getModelsCatalog({
 }
 
 export function renderModelsCatalog(catalog) {
+  const escapeCell = (value) => String(value ?? "").replaceAll("|", "\\|");
   const lines = [
     "# Claude Models",
     `Source: ${catalog.source}`,
     "",
     "| Model | Display name |",
     "| --- | --- |",
-    ...catalog.models.map((model) => `| ${model.id} | ${model.displayName} |`),
+    ...catalog.models.map(
+      (model) => `| ${escapeCell(model.id)} | ${escapeCell(model.displayName)} |`
+    ),
   ];
   if (catalog.warning) {
     lines.push("", `Notice: ${catalog.warning}`);
