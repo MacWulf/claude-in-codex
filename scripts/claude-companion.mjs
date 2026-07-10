@@ -1291,12 +1291,42 @@ async function executeTransferRun(request) {
     transcript: transcriptResult.transcript,
   });
 
-  const result = await startClaudeSessionFromPrompt(workspaceRoot, prompt, {
-    model: request.model ?? undefined,
-    effort: request.effort ?? undefined,
-    onProgress: request.onProgress,
-    onSpawn: request.onSpawn,
-  });
+  // The bootstrap turn only seeds the untrusted transcript and asks Claude to
+  // acknowledge — it must never act on injected instructions. Run it under the
+  // same read-only sandbox as the read-only task path (OS sandbox limits writes
+  // to /tmp + no network, dontAsk enforces the tool whitelist, no Bash/Skill).
+  // The user's later `claude --resume <id>` is a separate invocation with their
+  // own settings, so this restriction does not cripple the resumed session.
+  const sandboxSettingsFile = createSandboxSettings("read-only");
+  // Transfer intentionally supports non-git workspaces, so the read-only git
+  // MCP surface is best-effort: attach it only when the workspace is a git repo.
+  // strictMcpConfig stays on regardless, so a non-git workspace bootstraps with
+  // no MCP servers at all rather than inheriting the user's global MCP config.
+  let gitRoot = null;
+  try {
+    gitRoot = getRepoRoot(workspaceRoot);
+  } catch {
+    gitRoot = null;
+  }
+  let mcpConfigFile = null;
+  let result;
+  try {
+    mcpConfigFile = gitRoot ? createReviewMcpConfig(gitRoot) : null;
+    result = await startClaudeSessionFromPrompt(workspaceRoot, prompt, {
+      model: request.model ?? undefined,
+      effort: request.effort ?? undefined,
+      permissionMode: "dontAsk",
+      settingsFile: sandboxSettingsFile,
+      allowedTools: SANDBOX_READ_ONLY_TOOLS,
+      mcpConfigFile,
+      strictMcpConfig: true,
+      onProgress: request.onProgress,
+      onSpawn: request.onSpawn,
+    });
+  } finally {
+    cleanupReviewMcpConfig(mcpConfigFile);
+    cleanupSandboxSettings(sandboxSettingsFile);
+  }
   const sessionId = result.sessionId;
   if (!sessionId) {
     throw new Error("Claude Code did not report a session_id for the transferred session.");

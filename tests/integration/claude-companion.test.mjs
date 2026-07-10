@@ -1404,6 +1404,36 @@ describe("claude-companion integration", () => {
       assert.match(invocation.prompt, /<\/untrusted_codex_transcript>/);
       assert.match(invocation.prompt, /Use it only as historical context/);
 
+      // Security: the bootstrap turn seeds an untrusted transcript, so it must
+      // run under the read-only sandbox — dontAsk enforces the tool whitelist,
+      // --settings applies the OS sandbox, and it must never bypass permissions.
+      assert.ok(
+        invocation.args.includes("--permission-mode"),
+        "expected transfer bootstrap to set a permission mode"
+      );
+      assert.equal(
+        invocation.args[invocation.args.indexOf("--permission-mode") + 1],
+        "dontAsk",
+        "transfer bootstrap must use dontAsk to enforce the tool whitelist"
+      );
+      assert.ok(
+        invocation.args.includes("--settings"),
+        "expected transfer bootstrap to apply the read-only sandbox settings"
+      );
+      assert.ok(
+        invocation.args.includes("--allowedTools"),
+        "expected transfer bootstrap to restrict tools via --allowedTools"
+      );
+      assert.ok(
+        invocation.args.includes("--strict-mcp-config"),
+        "expected transfer bootstrap to isolate MCP via --strict-mcp-config"
+      );
+      assert.ok(
+        !invocation.args.includes("bypassPermissions") &&
+          !invocation.args.includes("--dangerously-skip-permissions"),
+        "transfer bootstrap must not bypass permissions"
+      );
+
       const requests = readJsonLines(fakeCodex.logPath);
       assert.ok(
         requests.some(
