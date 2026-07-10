@@ -3,7 +3,7 @@
 ## v1.4.0
 
 - **Bump the model aliases to the current generation.** `opus` now resolves to the 1M-context `claude-opus-4-8[1m]` (was `claude-opus-4-7[1m]`) and `sonnet` to `claude-sonnet-5[1m]` (was `claude-sonnet-4-6[1m]`); `haiku` stays on `claude-haiku-4-5`. Default effort is unchanged (opus `xhigh`, sonnet `high`, haiku unset). Full model IDs passed to `--model` are still forwarded verbatim, so a newer model works with no code change.
-- **Make the model aliases overridable via env vars (future-proofing).** `CC_PLUGIN_CODEX_MODEL_OPUS`, `CC_PLUGIN_CODEX_MODEL_SONNET`, and `CC_PLUGIN_CODEX_MODEL_HAIKU` retarget the corresponding alias to any model ID without editing the source, so the fork can track a new release without a patch. A blank/whitespace-only value falls back to the pinned default.
+- **Make the model aliases overridable via env vars (future-proofing).** `CC_PLUGIN_CODEX_MODEL_OPUS`, `CC_PLUGIN_CODEX_MODEL_SONNET`, and `CC_PLUGIN_CODEX_MODEL_HAIKU` retarget the corresponding alias to any model ID without editing the source, so the fork can track a new release without a patch. A blank/whitespace-only value falls back to the pinned default, and a retargeted alias keeps its tier's default effort (opus `xhigh`, sonnet `high`).
 - **Security: run the `$cc:transfer` bootstrap turn under the read-only sandbox.** The bootstrap turn seeds an untrusted Codex transcript, so it now runs with `--permission-mode dontAsk`, the read-only sandbox `--settings`, the `SANDBOX_READ_ONLY_TOOLS` allowlist, and `--strict-mcp-config` (best-effort read-only git MCP, attached only for git workspaces), with cleanup in a `finally` block. The user's later `claude --resume <id>` is a separate, unrestricted invocation.
 
 ## v1.3.0

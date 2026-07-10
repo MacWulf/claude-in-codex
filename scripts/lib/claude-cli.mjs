@@ -613,14 +613,34 @@ export const VALID_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 export const DEFAULT_MODEL = "opus";
 
-export const DEFAULT_EFFORT_BY_MODEL = new Map([
-  ["opus", "xhigh"],
-  ["claude-opus-4-8", "xhigh"],
-  ["claude-opus-4-8[1m]", "xhigh"],
-  ["sonnet", "high"],
-  ["claude-sonnet-5", "high"],
-  ["claude-sonnet-5[1m]", "high"],
-]);
+// Per-tier effort defaults, keyed on the bare alias plus the pinned default IDs
+// (with and without the [1m] variant). haiku intentionally has no default.
+const DEFAULT_EFFORT_BY_ALIAS = Object.freeze({ opus: "xhigh", sonnet: "high" });
+
+/**
+ * Build the model→effort-default map. In addition to the static keys, the
+ * env-resolved alias target for each tier is added, so retargeting an alias via
+ * CC_PLUGIN_CODEX_MODEL_* keeps that tier's effort default instead of silently
+ * dropping `--effort` when `--model <alias>` resolves to the override ID.
+ */
+/** @visibleForTesting */
+export function buildDefaultEffortByModel(env = process.env) {
+  const map = new Map([
+    ["opus", "xhigh"],
+    ["claude-opus-4-8", "xhigh"],
+    ["claude-opus-4-8[1m]", "xhigh"],
+    ["sonnet", "high"],
+    ["claude-sonnet-5", "high"],
+    ["claude-sonnet-5[1m]", "high"],
+  ]);
+  const aliases = buildModelAliases(env);
+  for (const [alias, effort] of Object.entries(DEFAULT_EFFORT_BY_ALIAS)) {
+    map.set(aliases.get(alias), effort);
+  }
+  return map;
+}
+
+export const DEFAULT_EFFORT_BY_MODEL = buildDefaultEffortByModel();
 
 export function resolveDefaultModel(model) {
   if (model == null || String(model).trim() === "") {

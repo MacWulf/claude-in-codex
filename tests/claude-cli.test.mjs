@@ -17,6 +17,7 @@ import {
   DEFAULT_MODEL_ALIASES,
   MODEL_ALIAS_ENV_VARS,
   buildModelAliases,
+  buildDefaultEffortByModel,
   EFFORT_ALIASES,
   VALID_EFFORTS,
   DEFAULT_MODEL,
@@ -530,6 +531,35 @@ describe("buildModelAliases", () => {
     assert.equal(MODEL_ALIAS_ENV_VARS.opus, "CC_PLUGIN_CODEX_MODEL_OPUS");
     assert.equal(MODEL_ALIAS_ENV_VARS.sonnet, "CC_PLUGIN_CODEX_MODEL_SONNET");
     assert.equal(MODEL_ALIAS_ENV_VARS.haiku, "CC_PLUGIN_CODEX_MODEL_HAIKU");
+  });
+});
+
+// ===========================================================================
+// buildDefaultEffortByModel (retargeted aliases keep their tier effort)
+// ===========================================================================
+
+describe("buildDefaultEffortByModel", () => {
+  it("keeps the static tier defaults with no override", () => {
+    const map = buildDefaultEffortByModel({});
+    assert.equal(map.get("opus"), "xhigh");
+    assert.equal(map.get("claude-opus-4-8[1m]"), "xhigh");
+    assert.equal(map.get("sonnet"), "high");
+    assert.equal(map.get("claude-sonnet-5[1m]"), "high");
+    assert.equal(map.has("haiku"), false);
+  });
+
+  it("carries the tier effort onto an env-retargeted alias target", () => {
+    const map = buildDefaultEffortByModel({
+      CC_PLUGIN_CODEX_MODEL_SONNET: "claude-sonnet-6[1m]",
+      CC_PLUGIN_CODEX_MODEL_OPUS: "claude-opus-9",
+    });
+    // Regression guard: `--model sonnet` with an override resolves to the
+    // override ID, which must still map to the sonnet tier's `high` effort.
+    assert.equal(map.get("claude-sonnet-6[1m]"), "high");
+    assert.equal(map.get("claude-opus-9"), "xhigh");
+    // Static defaults remain present too.
+    assert.equal(map.get("sonnet"), "high");
+    assert.equal(map.get("claude-opus-4-8[1m]"), "xhigh");
   });
 });
 
