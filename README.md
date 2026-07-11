@@ -47,7 +47,7 @@ $cc:transfer                  # continue this whole thread in a fresh Claude ses
 
 ## ✨ What's different in this fork
 
-This fork adds four things on top of the upstream `sendbird/cc-plugin-codex`:
+This fork adds five things on top of the upstream `sendbird/cc-plugin-codex`:
 
 | | Upstream | **claude-in-codex** |
 | --- | --- | --- |
@@ -55,6 +55,7 @@ This fork adds four things on top of the upstream `sendbird/cc-plugin-codex`:
 | 🔁 **Thread transfer** | — | **`$cc:transfer`** carries the current Codex thread into a fresh Claude Code session and prints the exact `claude --resume` to continue |
 | 🔎 **Default review depth** | thin inline prompt | **structured prompt** with a severity taxonomy + JSON output schema, returning severity-sorted findings |
 | 🧭 **Model discovery & future compatibility** | hard-coded provider assumptions | **`$cc:models`** catalog, 24-hour cache, CLI-alias fallback, and passthrough for future model/effort names |
+| 🔐 **Cross-platform authentication** | checks generic CLI auth status and only preflights `ANTHROPIC_API_KEY` | parses Claude auth status, recognizes supported token/provider environment credentials, forwards the user's environment on macOS and Windows, and never stores credentials in the repository |
 
 > **Why the security fix matters:** the Claude CLI treats *any* `Bash` allowlist entry as opening the
 > **entire** `Bash` tool. Combined with a read-only sandbox that still allows network, that's an
@@ -99,6 +100,39 @@ The plugin itself runs locally. Claude Code still needs to be installed and auth
 the optional `$cc:models` catalog uses `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` for live API
 metadata. Without those variables it remains usable and falls back to the Claude CLI aliases
 `opus`, `sonnet`, and `haiku`.
+
+### Authentication persistence (macOS and Windows)
+
+The plugin never copies or stores Claude credentials. It starts the local `claude` CLI with the
+user's existing environment, so authentication remains owned by Claude Code:
+
+- macOS stores login credentials in the encrypted login Keychain.
+- Windows stores them under `%USERPROFILE%\.claude\.credentials.json`.
+- Do not point `CLAUDE_CONFIG_DIR` at a project, temporary, or per-session directory. That makes
+  credentials appear to disappear between sessions.
+
+For normal interactive use, authenticate once and verify the same user environment used by Codex:
+
+```bash
+claude auth login
+claude auth status
+```
+
+If macOS asks for login repeatedly, run `claude doctor` and check that the login Keychain is unlocked.
+On Windows, check that Codex and `claude` use the same Windows user profile and that the credentials
+file is readable by that user.
+
+For non-interactive environments where desktop Keychain/profile access is unavailable, use a user- or
+machine-level secret rather than committing a token to the repository:
+
+```bash
+claude setup-token
+```
+
+Set the resulting `CLAUDE_CODE_OAUTH_TOKEN` in the environment visible to Codex, then restart Codex.
+The plugin also recognizes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and Claude's Bedrock,
+Vertex, and Foundry provider selectors. `$cc:setup` reports the credential source without printing
+credential values.
 
 ### 2. Verify
 

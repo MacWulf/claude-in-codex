@@ -76,12 +76,100 @@ function appendTextTail(existing, chunk, maxBytes) {
 // Availability & Auth
 // ---------------------------------------------------------------------------
 
+const CLAUDE_PROVIDER_ENV_VARS = Object.freeze([
+  ["CLAUDE_CODE_USE_BEDROCK", "Amazon Bedrock"],
+  ["CLAUDE_CODE_USE_VERTEX", "Google Vertex"],
+  ["CLAUDE_CODE_USE_FOUNDRY", "Microsoft Foundry"],
+]);
+
+const CLAUDE_TOKEN_ENV_VARS = Object.freeze([
+  ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"],
+  ["ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
+  ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
+]);
+
+function hasEnvValue(env, name) {
+  return typeof env?.[name] === "string" && env[name].trim().length > 0;
+}
+
+function isEnabledEnvFlag(env, name) {
+  if (!hasEnvValue(env, name)) return false;
+  return !["0", "false", "no", "off"].includes(env[name].trim().toLowerCase());
+}
+
+/**
+ * Return the credential source Claude Code can use without interactive login.
+ * Values are never returned, logged, or persisted.
+ */
+export function getConfiguredClaudeCredential(env = process.env) {
+  for (const [name, provider] of CLAUDE_PROVIDER_ENV_VARS) {
+    if (isEnabledEnvFlag(env, name)) {
+      return { source: name, detail: `${provider} credentials configured` };
+    }
+  }
+
+  for (const [name, source] of CLAUDE_TOKEN_ENV_VARS) {
+    if (hasEnvValue(env, name)) {
+      return { source, detail: `${source} configured` };
+    }
+  }
+
+  if (
+    hasEnvValue(env, "CLAUDE_CODE_OAUTH_REFRESH_TOKEN") &&
+    hasEnvValue(env, "CLAUDE_CODE_OAUTH_SCOPES")
+  ) {
+    return {
+      source: "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+      detail: "CLAUDE_CODE_OAUTH_REFRESH_TOKEN configured",
+    };
+  }
+
+  return null;
+}
+
+function normalizeAuthDiagnostic(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 240);
+}
+
+/**
+ * Parse the JSON emitted by `claude auth status` when available.
+ * Older Claude CLI versions may emit non-JSON output, so null means fallback.
+ */
+export function parseClaudeAuthStatus(stdout) {
+  const text = String(stdout ?? "").trim();
+  if (!text) return null;
+
+  let report;
+  try {
+    report = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  if (!report || typeof report.loggedIn !== "boolean") return null;
+  const source =
+    typeof report.authMethod === "string" && report.authMethod.trim()
+      ? report.authMethod.trim()
+      : "unknown";
+  return {
+    loggedIn: report.loggedIn,
+    source,
+    detail: report.loggedIn
+      ? `authenticated (${source})`
+      : `not authenticated (${source})`,
+  };
+}
+
 export function getClaudeAvailability(cwd) {
   try {
     const result = spawnSync(CLAUDE_BIN, ["--version"], {
       cwd,
       encoding: "utf8",
       timeout: 10_000,
+      env: process.env,
     });
     if (result.status !== 0) throw new Error("non-zero exit");
     return { available: true, detail: (result.stdout ?? "").trim() };
@@ -90,23 +178,55 @@ export function getClaudeAvailability(cwd) {
   }
 }
 
-export function getClaudeAuthStatus(cwd) {
-  if (process.env.ANTHROPIC_API_KEY) {
-    return { available: true, loggedIn: true, detail: "API key configured" };
+export function getClaudeAuthStatus(
+  cwd,
+  { env = process.env, spawnSyncImpl = spawnSync } = {}
+) {
+  const configuredCredential = getConfiguredClaudeCredential(env);
+  if (configuredCredential) {
+    return { available: true, loggedIn: true, ...configuredCredential };
   }
+
   try {
-    const result = spawnSync(CLAUDE_BIN, ["auth", "status"], {
+    const result = spawnSyncImpl(CLAUDE_BIN, ["auth", "status"], {
       cwd,
       encoding: "utf8",
       timeout: 10_000,
+      env,
     });
-    if (result.status !== 0) throw new Error("not authenticated");
-    return { available: true, loggedIn: true, detail: "authenticated" };
-  } catch {
+
+    const spawnErrorCode =
+      result.error && "code" in result.error ? String(result.error.code) : null;
+    if (spawnErrorCode === "ENOENT") {
+      return { available: false, loggedIn: false, detail: "claude CLI not found in PATH" };
+    }
+
+    const parsed = parseClaudeAuthStatus(result.stdout);
+    if (parsed) {
+      return { available: true, ...parsed };
+    }
+
+    if (result.status === 0) {
+      return { available: true, loggedIn: true, source: "cli", detail: "authenticated" };
+    }
+
+    const diagnostic = normalizeAuthDiagnostic(result.stderr || result.stdout);
     return {
       available: true,
       loggedIn: false,
-      detail: "not authenticated — run `claude auth login`",
+      source: "none",
+      detail: diagnostic
+        ? `not authenticated — ${diagnostic}`
+        : "not authenticated — run `claude auth login`",
+    };
+  } catch (error) {
+    return {
+      available: true,
+      loggedIn: false,
+      source: "unknown",
+      detail: normalizeAuthDiagnostic(error?.message)
+        ? `auth status failed — ${normalizeAuthDiagnostic(error.message)}`
+        : "auth status failed — run `claude auth login`",
     };
   }
 }
@@ -735,6 +855,7 @@ export async function runClaudeTurn(cwd, prompt, options = {}) {
       cwd,
       detached: true, // new process group for safe cancellation
       stdio: ["ignore", "pipe", "pipe"], // stdin ignored — prompt is passed as CLI arg
+      env: process.env,
     });
 
     let pidIdentity = null;

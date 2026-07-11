@@ -8,6 +8,9 @@ import assert from "node:assert/strict";
 import {
   StreamParser,
   validateTurnCompletion,
+  getConfiguredClaudeCredential,
+  parseClaudeAuthStatus,
+  getClaudeAuthStatus,
   resolveModel,
   resolveEffort,
   resolveDefaultModel,
@@ -45,6 +48,107 @@ function assertIncludesReviewMcpTools(tools) {
     assert.ok(REVIEW_MCP_ALLOWED_TOOLS.includes(expected));
   }
 }
+
+// ===========================================================================
+// Auth
+// ===========================================================================
+
+describe("Claude auth", () => {
+  it("recognizes supported non-interactive token credentials without exposing values", () => {
+    const result = getConfiguredClaudeCredential({
+      ANTHROPIC_AUTH_TOKEN: "secret-token",
+    });
+
+    assert.deepEqual(result, {
+      source: "ANTHROPIC_AUTH_TOKEN",
+      detail: "ANTHROPIC_AUTH_TOKEN configured",
+    });
+    assert.doesNotMatch(JSON.stringify(result), /secret-token/);
+  });
+
+  it("recognizes Claude OAuth token and cloud provider configuration", () => {
+    assert.equal(
+      getConfiguredClaudeCredential({ CLAUDE_CODE_OAUTH_TOKEN: "secret" }).source,
+      "CLAUDE_CODE_OAUTH_TOKEN"
+    );
+    assert.equal(
+      getConfiguredClaudeCredential({ CLAUDE_CODE_USE_BEDROCK: "1" }).source,
+      "CLAUDE_CODE_USE_BEDROCK"
+    );
+    assert.equal(
+      getConfiguredClaudeCredential({ CLAUDE_CODE_USE_VERTEX: "false" }),
+      null
+    );
+  });
+
+  it("requires both OAuth refresh token and scopes", () => {
+    assert.equal(
+      getConfiguredClaudeCredential({ CLAUDE_CODE_OAUTH_REFRESH_TOKEN: "secret" }),
+      null
+    );
+    assert.equal(
+      getConfiguredClaudeCredential({
+        CLAUDE_CODE_OAUTH_REFRESH_TOKEN: "secret",
+        CLAUDE_CODE_OAUTH_SCOPES: "user:inference",
+      }).source,
+      "CLAUDE_CODE_OAUTH_REFRESH_TOKEN"
+    );
+  });
+
+  it("parses logged-out JSON even when auth status exits successfully", () => {
+    assert.deepEqual(
+      parseClaudeAuthStatus(
+        JSON.stringify({ loggedIn: false, authMethod: "none", apiProvider: "firstParty" })
+      ),
+      {
+        loggedIn: false,
+        source: "none",
+        detail: "not authenticated (none)",
+      }
+    );
+  });
+
+  it("uses parsed CLI auth status and preserves useful failure diagnostics", () => {
+    const loggedOut = getClaudeAuthStatus("/tmp", {
+      env: {},
+      spawnSyncImpl: () => ({
+        status: 0,
+        stdout: JSON.stringify({ loggedIn: false, authMethod: "none" }),
+        stderr: "",
+      }),
+    });
+    assert.equal(loggedOut.loggedIn, false);
+    assert.equal(loggedOut.source, "none");
+
+    const failed = getClaudeAuthStatus("/tmp", {
+      env: {},
+      spawnSyncImpl: () => ({
+        status: 1,
+        stdout: "",
+        stderr: "Keychain is locked",
+      }),
+    });
+    assert.equal(failed.loggedIn, false);
+    assert.match(failed.detail, /Keychain is locked/);
+  });
+
+  it("reports missing Claude CLI separately from an authentication failure", () => {
+    const result = getClaudeAuthStatus("/tmp", {
+      env: {},
+      spawnSyncImpl: () => ({
+        status: null,
+        stdout: "",
+        stderr: "",
+        error: { code: "ENOENT" },
+      }),
+    });
+    assert.deepEqual(result, {
+      available: false,
+      loggedIn: false,
+      detail: "claude CLI not found in PATH",
+    });
+  });
+});
 
 // ===========================================================================
 // StreamParser
