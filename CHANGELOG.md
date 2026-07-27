@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Recover from a stale versioned `CC_PLUGIN_CODEX_EXECUTABLE` after a Codex desktop auto-update by using the stable Codex launcher before falling back to the `codex` command.
 - Delegate the `opus`, `sonnet`, and `haiku` aliases to Claude CLI so new model generations are picked up without plugin version pins.
 - Let Claude CLI choose the default effort for the selected model; explicit effort values and `--effort auto` remain supported.
 - Add `$cc:models` with cached Anthropic Models API metadata and a CLI-alias fallback.

@@ -4,6 +4,8 @@
  */
 
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 import process from "node:process";
 
@@ -13,8 +15,9 @@ const CLIENT_INFO = {
 };
 const DEFAULT_TIMEOUT_MS = 15000;
 
-function resolveAppServerCommand() {
-  const executable = process.env.CC_PLUGIN_CODEX_EXECUTABLE || "codex";
+export function resolveAppServerCommand() {
+  const configuredExecutable = process.env.CC_PLUGIN_CODEX_EXECUTABLE;
+  const executable = resolveCodexExecutable(configuredExecutable);
   const rawArgs = process.env.CC_PLUGIN_CODEX_APP_SERVER_ARGS_JSON;
 
   if (!rawArgs) {
@@ -39,6 +42,28 @@ function resolveAppServerCommand() {
   }
 
   return { executable, args };
+}
+
+function resolveCodexExecutable(configuredExecutable) {
+  if (!configuredExecutable || !path.isAbsolute(configuredExecutable)) {
+    return configuredExecutable || "codex";
+  }
+  if (fs.existsSync(configuredExecutable)) {
+    return configuredExecutable;
+  }
+
+  // Codex desktop injects a versioned executable path. App auto-updates remove
+  // old version directories while the existing process still carries that path.
+  // Its stable sibling launcher always resolves the currently installed build.
+  const stableLauncher = path.join(
+    path.dirname(path.dirname(configuredExecutable)),
+    path.basename(configuredExecutable)
+  );
+  if (fs.existsSync(stableLauncher)) {
+    return stableLauncher;
+  }
+
+  return "codex";
 }
 
 export async function callCodexAppServer({ cwd, method, params }) {
